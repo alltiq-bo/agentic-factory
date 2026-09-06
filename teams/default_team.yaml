@@ -1,0 +1,75 @@
+# ============================================================
+# Default Team Configuration
+# Change provider/model per agent without touching code.
+# ============================================================
+name: default_team
+
+settings:
+  max_qa_cycles: 3
+  log_level: INFO
+
+agents:
+  analyst:
+    llm:
+      provider: anthropic          # anthropic | openai | ollama | gemini
+      model: claude-sonnet-4-6
+      temperature: 0.4
+      max_tokens: 4096
+
+  architect:
+    llm:
+      provider: anthropic
+      model: claude-sonnet-4-6
+      temperature: 0.3
+      max_tokens: 8192
+
+  backend_dev:
+    llm:
+      provider: anthropic
+      model: claude-sonnet-4-6
+      temperature: 0.2             # Lower = more deterministic code
+      max_tokens: 8192
+
+  frontend_dev:
+    llm:
+      provider: anthropic
+      model: claude-sonnet-4-6
+      temperature: 0.2
+      max_tokens: 8192
+
+  qa:
+    llm:
+      provider: anthropic
+      model: claude-sonnet-4-6
+      temperature: 0.3
+      max_tokens: 4096
+
+workflow:
+  name: software_development
+  max_qa_cycles: 3
+  steps:
+    - name: analyze_requirements
+      agent_role: analyst
+      mode: sequential
+      depends_on: []
+
+    - name: design_architecture
+      agent_role: architect
+      mode: sequential
+      depends_on: [analyze_requirements]
+
+    - name: implement_backend
+      agent_role: backend_dev
+      mode: parallel
+      depends_on: [design_architecture]
+
+    - name: implement_frontend
+      agent_role: frontend_dev
+      mode: parallel
+      depends_on: [design_architecture]
+
+    - name: validate
+      agent_role: qa
+      mode: sequential
+      depends_on: [implement_backend, implement_frontend]
+      on_fail: implement_backend   # QA fail re-routes to dev cycle

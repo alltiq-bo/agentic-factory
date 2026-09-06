@@ -1,0 +1,34 @@
+---
+title: Agentic Factory — Task State Machine
+---
+stateDiagram-v2
+    [*] --> CREATED : GitHub Issue / Manual trigger
+
+    CREATED --> ANALYZING : Orchestrator dispatches to Analyst
+    ANALYZING --> DESIGNING : Analyst completes (user_stories ready)
+    ANALYZING --> FAILED : Analyst error / timeout
+
+    DESIGNING --> DEVELOPING : Architect completes (ADR + design ready)
+    DESIGNING --> ANALYZING : Needs more requirements
+    DESIGNING --> FAILED : Architect error / timeout
+
+    DEVELOPING --> VALIDATING : Backend + Frontend complete
+    DEVELOPING --> FAILED : Dev error / timeout
+
+    state DEVELOPING {
+        [*] --> BACKEND_IN_PROGRESS
+        [*] --> FRONTEND_IN_PROGRESS
+        BACKEND_IN_PROGRESS --> BACKEND_DONE
+        FRONTEND_IN_PROGRESS --> FRONTEND_DONE
+        BACKEND_DONE --> [*]
+        FRONTEND_DONE --> [*]
+    }
+
+    VALIDATING --> DONE : QA PASS ✅
+    VALIDATING --> FIX_CYCLE : QA FAIL ❌
+
+    FIX_CYCLE --> DEVELOPING : Developers apply QA feedback
+    FIX_CYCLE --> FAILED : Max retries exceeded
+
+    DONE --> [*] : PR merged / Issue closed
+    FAILED --> [*] : Alert + human escalation

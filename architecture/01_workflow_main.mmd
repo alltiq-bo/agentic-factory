@@ -1,0 +1,53 @@
+---
+title: Agentic Factory — Main Workflow
+---
+flowchart TD
+    GH["🐙 GITHUB\nIssues / PR / Code"]
+
+    subgraph ORCH["ORCHESTRATOR"]
+        WF["Workflow Engine"]
+        RT["Task Router"]
+        ST["State Manager"]
+        WF <--> RT
+        RT <--> ST
+    end
+
+    subgraph AGENTS["AGENT TEAM  (Docker containers)"]
+        AN["🔍 Analyst\nRequirements & User Stories"]
+        AR["🏛️ Architect\nSystem Design & ADRs"]
+
+        subgraph DEV["Developers"]
+            BE["⚙️ Backend Agent\nAPIs · Services · DB"]
+            FE["🎨 Frontend Agent\nUI · Components · UX"]
+        end
+
+        QA["🧪 QA Agent\nTest Plan · Validation"]
+    end
+
+    KB[("📚 Knowledge Base\nArtifacts · Decisions\nContext · History")]
+
+    DONE["✅ DONE"]
+    RETRY["🔁 Back to Developer"]
+
+    GH -->|"new issue / task"| ORCH
+    ORCH -->|"analyze requirements"| AN
+    AN -->|"user stories + scope"| AR
+    AR -->|"architecture + tech decisions"| DEV
+    AR -.->|"read/write"| KB
+    AN -.->|"read/write"| KB
+    BE -.->|"read/write"| KB
+    FE -.->|"read/write"| KB
+    QA -.->|"read/write"| KB
+    BE -->|"implementation"| QA
+    FE -->|"implementation"| QA
+    QA -->|"PASS ✅"| DONE
+    QA -->|"FAIL ❌"| RETRY
+    RETRY -->|"fix cycle"| DEV
+    DONE -->|"merge / close issue"| GH
+
+    style ORCH fill:#1e3a5f,color:#fff,stroke:#4a9eff
+    style AGENTS fill:#1a3a2a,color:#fff,stroke:#4aff9e
+    style KB fill:#3a1a3a,color:#fff,stroke:#ff4aff
+    style DONE fill:#1a3a1a,color:#fff,stroke:#4aff4a
+    style RETRY fill:#3a1a1a,color:#fff,stroke:#ff4a4a
+    style GH fill:#24292e,color:#fff,stroke:#6e7681

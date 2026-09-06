@@ -1,0 +1,55 @@
+---
+title: Agentic Factory — Task Execution Sequence
+---
+sequenceDiagram
+    actor User
+    participant GH as GitHub
+    participant ORC as Orchestrator
+    participant KB as Knowledge Base
+    participant AN as Analyst
+    participant AR as Architect
+    participant BE as Backend Agent
+    participant FE as Frontend Agent
+    participant QA as QA Agent
+
+    User->>GH: Create Issue / Feature Request
+    GH->>ORC: Webhook trigger (new task)
+    ORC->>KB: Initialize task context
+
+    ORC->>AN: dispatch(task: analyze)
+    AN->>KB: read(project_context)
+    AN->>KB: write(user_stories, acceptance_criteria)
+    AN-->>ORC: done(artifacts: user_stories)
+
+    ORC->>AR: dispatch(task: design)
+    AR->>KB: read(user_stories, project_context)
+    AR->>KB: write(ADR, system_design, API_contracts)
+    AR-->>ORC: done(artifacts: architecture)
+
+    par Backend development
+        ORC->>BE: dispatch(task: implement_backend)
+        BE->>KB: read(API_contracts, ADR)
+        BE->>KB: write(code_artifacts, endpoints)
+        BE-->>ORC: done(artifacts: backend)
+    and Frontend development
+        ORC->>FE: dispatch(task: implement_frontend)
+        FE->>KB: read(system_design, API_contracts)
+        FE->>KB: write(code_artifacts, components)
+        FE-->>ORC: done(artifacts: frontend)
+    end
+
+    ORC->>QA: dispatch(task: validate)
+    QA->>KB: read(all_artifacts)
+    QA->>KB: write(test_plan, test_results)
+
+    alt PASS
+        QA-->>ORC: result(status: pass)
+        ORC->>GH: create PR / close issue
+        GH-->>User: Notify completion
+    else FAIL
+        QA-->>ORC: result(status: fail, issues: [...])
+        ORC->>KB: write(qa_feedback)
+        ORC->>BE: dispatch(task: fix, feedback: qa_issues)
+        ORC->>FE: dispatch(task: fix, feedback: qa_issues)
+        Note over ORC,QA: Re-enters QA validation loop
+    end

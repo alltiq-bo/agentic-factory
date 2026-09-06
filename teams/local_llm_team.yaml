@@ -1,0 +1,73 @@
+# ============================================================
+# Local LLM Team — runs entirely with Ollama (no API keys)
+# ============================================================
+name: local_llm_team
+
+settings:
+  max_qa_cycles: 2
+  log_level: DEBUG
+
+agents:
+  analyst:
+    llm:
+      provider: ollama
+      model: llama3.1:8b
+      temperature: 0.5
+      max_tokens: 4096
+
+  architect:
+    llm:
+      provider: ollama
+      model: llama3.1:70b          # Larger model for complex reasoning
+      temperature: 0.3
+      max_tokens: 8192
+
+  backend_dev:
+    llm:
+      provider: ollama
+      model: codestral:22b         # Code-specialized model
+      temperature: 0.1
+      max_tokens: 8192
+
+  frontend_dev:
+    llm:
+      provider: ollama
+      model: codestral:22b
+      temperature: 0.1
+      max_tokens: 8192
+
+  qa:
+    llm:
+      provider: ollama
+      model: llama3.1:8b
+      temperature: 0.3
+      max_tokens: 4096
+
+workflow:
+  name: software_development
+  max_qa_cycles: 2
+  steps:
+    - name: analyze_requirements
+      agent_role: analyst
+      mode: sequential
+      depends_on: []
+
+    - name: design_architecture
+      agent_role: architect
+      mode: sequential
+      depends_on: [analyze_requirements]
+
+    - name: implement_backend
+      agent_role: backend_dev
+      mode: parallel
+      depends_on: [design_architecture]
+
+    - name: implement_frontend
+      agent_role: frontend_dev
+      mode: parallel
+      depends_on: [design_architecture]
+
+    - name: validate
+      agent_role: qa
+      mode: sequential
+      depends_on: [implement_backend, implement_frontend]

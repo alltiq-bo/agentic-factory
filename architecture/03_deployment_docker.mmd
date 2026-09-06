@@ -1,0 +1,43 @@
+---
+title: Agentic Factory — Docker Deployment Architecture
+---
+architecture-beta
+    group cloud(cloud)[Agentic Factory Platform]
+
+    group orchestration(server)[Orchestrator Layer] in cloud
+        service orch(server)[Orchestrator\nFastAPI]
+        service redis(database)[Redis\nPub/Sub + Cache] in orchestration
+
+    group agents(server)[Agent Containers] in cloud
+        service analyst(server)[analyst\nDocker]
+        service architect(server)[architect\nDocker]
+        service backend(server)[backend_dev\nDocker]
+        service frontend(server)[frontend_dev\nDocker]
+        service qa(server)[qa\nDocker]
+
+    group storage(database)[Persistent Storage] in cloud
+        service pg(database)[PostgreSQL\nKnowledge Base]
+        service vector(database)[Vector Store\nEmbeddings]
+
+    group external(internet)[External]
+        service github(internet)[GitHub API]
+        service claude(internet)[Claude API\nAnthropic]
+
+    github:R --> L:orch
+    orch:R --> L:redis
+    redis:B --> T:analyst
+    redis:B --> T:architect
+    redis:B --> T:backend
+    redis:B --> T:frontend
+    redis:B --> T:qa
+    analyst:B --> T:pg
+    architect:B --> T:pg
+    backend:B --> T:pg
+    frontend:B --> T:pg
+    qa:B --> T:pg
+    pg:R --> L:vector
+    analyst:R --> L:claude
+    architect:R --> L:claude
+    backend:R --> L:claude
+    frontend:R --> L:claude
+    qa:R --> L:claude

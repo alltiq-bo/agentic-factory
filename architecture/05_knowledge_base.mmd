@@ -1,0 +1,77 @@
+---
+title: Agentic Factory — Knowledge Base Data Model
+---
+erDiagram
+    PROJECT {
+        uuid id PK
+        string name
+        string description
+        string github_repo
+        timestamp created_at
+    }
+
+    TASK {
+        uuid id PK
+        uuid project_id FK
+        string github_issue_ref
+        string title
+        string status
+        int retry_count
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    ARTIFACT {
+        uuid id PK
+        uuid task_id FK
+        string agent_role
+        string artifact_type
+        jsonb content
+        string version
+        timestamp created_at
+    }
+
+    AGENT_PROFILE {
+        uuid id PK
+        string role
+        string model
+        string system_prompt
+        jsonb tools
+        string docker_image
+    }
+
+    TEAM_CONFIG {
+        uuid id PK
+        uuid project_id FK
+        string name
+        jsonb agent_roles
+        jsonb workflow_definition
+    }
+
+    MESSAGE {
+        uuid id PK
+        uuid task_id FK
+        string from_agent
+        string to_agent
+        string channel
+        jsonb payload
+        timestamp sent_at
+    }
+
+    QA_RESULT {
+        uuid id PK
+        uuid task_id FK
+        string status
+        jsonb issues_found
+        jsonb test_plan
+        int cycle_number
+        timestamp evaluated_at
+    }
+
+    PROJECT ||--o{ TASK : "has"
+    PROJECT ||--o{ TEAM_CONFIG : "uses"
+    TASK ||--o{ ARTIFACT : "produces"
+    TASK ||--o{ MESSAGE : "generates"
+    TASK ||--o{ QA_RESULT : "evaluated_by"
+    AGENT_PROFILE ||--o{ ARTIFACT : "creates"
+    TEAM_CONFIG ||--o{ AGENT_PROFILE : "includes"

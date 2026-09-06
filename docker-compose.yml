@@ -1,0 +1,155 @@
+version: "3.9"
+
+# ============================================================
+# Agentic Factory — Docker Compose
+# One container per agent role.
+# ============================================================
+
+x-agent-defaults: &agent-defaults
+  build:
+    context: .
+    dockerfile: agents/base/Dockerfile.base
+  networks: [agentic_net]
+  restart: unless-stopped
+  depends_on:
+    redis:
+      condition: service_healthy
+    postgres:
+      condition: service_healthy
+  environment:
+    ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
+    OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
+    REDIS_URL: redis://redis:6379
+    POSTGRES_URL: postgresql://agentuser:agentpass@postgres:5432/agentdb
+    LOG_LEVEL: ${LOG_LEVEL:-INFO}
+
+services:
+
+  # ── Infrastructure ─────────────────────────────────────────
+
+  redis:
+    image: redis:7-alpine
+    networks: [agentic_net]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    volumes:
+      - redis_data:/data
+
+  postgres:
+    image: postgres:16-alpine
+    networks: [agentic_net]
+    environment:
+      POSTGRES_USER: agentuser
+      POSTGRES_PASSWORD: agentpass
+      POSTGRES_DB: agentdb
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agentuser -d agentdb"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  # Optional: local LLM via Ollama (comment out if using cloud APIs)
+  ollama:
+    image: ollama/ollama:latest
+    networks: [agentic_net]
+    profiles: [local_llm]
+    volumes:
+      - ollama_data:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  # ── Orchestrator ───────────────────────────────────────────
+
+  orchestrator:
+    build:
+      context: .
+      dockerfile: orchestrator/Dockerfile
+    networks: [agentic_net]
+    ports:
+      - "8000:8000"
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    environment:
+      REDIS_URL: redis://redis:6379
+      POSTGRES_URL: postgresql://agentuser:agentpass@postgres:5432/agentdb
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
+      OLLAMA_BASE_URL: http://ollama:11434
+      TEAM_CONFIG: ${TEAM_CONFIG:-teams/default_team.yaml}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    volumes:
+      - ./guidelines:/app/guidelines   # Guidelines dir mounted for live updates
+      - ./teams:/app/teams
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Agent Containers ───────────────────────────────────────
+
+  analyst:
+    <<: *agent-defaults
+    build:
+      context: .
+      dockerfile: agents/analyst/Dockerfile
+    environment:
+      <<: *agent-defaults
+      AGENT_ROLE: analyst
+
+  architect:
+    <<: *agent-defaults
+    build:
+      context: .
+      dockerfile: agents/architect/Dockerfile
+    environment:
+      AGENT_ROLE: architect
+
+  backend_dev:
+    <<: *agent-defaults
+    build:
+      context: .
+      dockerfile: agents/backend_dev/Dockerfile
+    environment:
+      AGENT_ROLE: backend_dev
+
+  frontend_dev:
+    <<: *agent-defaults
+    build:
+      context: .
+      dockerfile: agents/frontend_dev/Dockerfile
+    environment:
+      AGENT_ROLE: frontend_dev
+
+  qa:
+    <<: *agent-defaults
+    build:
+      context: .
+      dockerfile: agents/qa/Dockerfile
+    environment:
+      AGENT_ROLE: qa
+
+networks:
+  agentic_net:
+    driver: bridge
+
+volumes:
+  redis_data:
+  postgres_data:
+  ollama_data:
