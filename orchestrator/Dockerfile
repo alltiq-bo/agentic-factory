@@ -8,9 +8,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY orchestrator/ ./orchestrator/
-COPY agents/ ./agents/
-COPY teams/ ./teams/
+COPY orchestrator/   ./orchestrator/
+COPY agents/         ./agents/
+COPY knowledge_base/ ./knowledge_base/
+COPY teams/          ./teams/
+COPY workflows/      ./workflows/
+COPY profiles/       ./profiles/
+COPY guidelines/     ./guidelines/
 
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
