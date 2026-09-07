@@ -246,7 +246,7 @@ def _resolve_yaml(sub: str, name: str) -> "Path | None":
     # Check project dir first
     project_dir = os.environ.get("AGENTIC_PROJECT_DIR")
     if project_dir:
-        candidate = Path(project_dir) / ".agentic" / f"{name}.yaml"
+        candidate = Path(project_dir) / ".agentiq" / f"{name}.yaml"
         if candidate.exists():
             return candidate
     return _factory_dir(sub) / f"{name}.yaml"

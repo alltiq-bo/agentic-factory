@@ -1,5 +1,5 @@
 """
-agentic init — interactive scaffolding of .agentic/ in a target project dir.
+agentic init — interactive scaffolding of .agentiq/ in a target project dir.
 """
 from __future__ import annotations
 import typer
@@ -11,7 +11,7 @@ _LLM_PROVIDERS = ["claude_code", "anthropic", "openai", "ollama"]
 
 @app.callback(invoke_without_command=True)
 def init(ctx: typer.Context) -> None:
-    """Interactive scaffolding of .agentic/ in a project directory."""
+    """Interactive scaffolding of .agentiq/ in a project directory."""
     if ctx.invoked_subcommand is not None:
         return
     _run_init()
@@ -38,9 +38,9 @@ def _run_init() -> None:
         else:
             raise typer.Abort()
 
-    agentic_dir = target_dir / ".agentic"
+    agentic_dir = target_dir / ".agentiq"
     if agentic_dir.exists():
-        if not typer.confirm(f".agentic/ already exists in {target_dir}. Overwrite?", default=False):
+        if not typer.confirm(f".agentiq/ already exists in {target_dir}. Overwrite?", default=False):
             raise typer.Abort()
 
     # 2. Project name
@@ -100,8 +100,8 @@ def _run_init() -> None:
             default=os.environ.get("CLAUDE_CONFIG_DIR", ""),
         )
 
-    # ── Create .agentic/ structure ─────────────────────────────────────────
-    rprint(f"\n[bold]Creating .agentic/ in {target_dir}[/bold]\n")
+    # ── Create .agentiq/ structure ─────────────────────────────────────────
+    rprint(f"\n[bold]Creating .agentiq/ in {target_dir}[/bold]\n")
     agentic_dir.mkdir(parents=True, exist_ok=True)
     (agentic_dir / "profiles").mkdir(exist_ok=True)
     (agentic_dir / "guidelines").mkdir(exist_ok=True)
@@ -110,7 +110,7 @@ def _run_init() -> None:
 
     # project.yaml
     _write_project_yaml(agentic_dir, project_name, github_repo)
-    created.append(".agentic/project.yaml")
+    created.append(".agentiq/project.yaml")
 
     # team.yaml
     templates_dir = Path(__file__).parents[1] / "templates"
@@ -118,7 +118,7 @@ def _run_init() -> None:
         src_team = teams_dir / f"{selected_team}.yaml"
         dst_team = agentic_dir / "team.yaml"
         shutil.copy2(src_team, dst_team)
-        created.append(f".agentic/team.yaml (from {selected_team})")
+        created.append(f".agentiq/team.yaml (from {selected_team})")
 
         # copy referenced profiles
         import yaml
@@ -131,18 +131,18 @@ def _run_init() -> None:
                 src_prof = profiles_dir / f"{profile}.md"
                 if src_prof.exists():
                     shutil.copy2(src_prof, agentic_dir / "profiles" / f"{profile}.md")
-                    created.append(f".agentic/profiles/{profile}.md")
+                    created.append(f".agentiq/profiles/{profile}.md")
     else:
         shutil.copy2(templates_dir / "team.yaml", agentic_dir / "team.yaml")
-        created.append(".agentic/team.yaml (from template)")
+        created.append(".agentiq/team.yaml (from template)")
 
     # workflow.yaml
     shutil.copy2(templates_dir / "workflow.yaml", agentic_dir / "workflow.yaml")
-    created.append(".agentic/workflow.yaml")
+    created.append(".agentiq/workflow.yaml")
 
     # .env.example
     _write_env_example(agentic_dir, selected_team, selected_provider, claude_config_dir)
-    created.append(".agentic/.env.example")
+    created.append(".agentiq/.env.example")
 
     # Print summary
     rprint("[bold green]Created:[/bold green]")
@@ -150,8 +150,8 @@ def _run_init() -> None:
         rprint(f"  [green]✓[/green] {item}")
 
     rprint(f"\n[bold]Next steps:[/bold]")
-    rprint(f"  1. Copy [cyan].agentic/.env.example[/cyan] to [cyan].env[/cyan] and fill in values")
-    rprint(f"  2. Edit [cyan].agentic/team.yaml[/cyan] to customize your team")
+    rprint(f"  1. Copy [cyan].agentiq/.env.example[/cyan] to [cyan].env[/cyan] and fill in values")
+    rprint(f"  2. Edit [cyan].agentiq/team.yaml[/cyan] to customize your team")
     rprint(f"  3. Run [cyan]agentic validate[/cyan] to check the config")
     rprint(f"  4. Run [cyan]agentic doctor[/cyan] to check the environment")
 

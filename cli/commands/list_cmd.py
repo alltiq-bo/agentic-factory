@@ -59,7 +59,7 @@ def _list_items(
     # Project items (override / supplement)
     project_dir = os.environ.get("AGENTIC_PROJECT_DIR")
     if project_dir:
-        proj_path = Path(project_dir) / ".agentic" / sub
+        proj_path = Path(project_dir) / ".agentiq" / sub
         if proj_path.exists():
             for p in sorted(proj_path.glob(f"*{ext}")):
                 items[p.stem + " [project]"] = p

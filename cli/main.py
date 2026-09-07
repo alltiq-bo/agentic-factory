@@ -28,7 +28,7 @@ app.add_typer(doctor_app,   name="doctor",   invoke_without_command=True,
 app.add_typer(validate_app, name="validate", invoke_without_command=True,
               help="Validate team/workflow YAML config")
 app.add_typer(init_app,     name="init",     invoke_without_command=True,
-              help="Interactive scaffolding of .agentic/ in a project dir")
+              help="Interactive scaffolding of .agentiq/ in a project dir")
 app.add_typer(run_app,      name="run",      invoke_without_command=True,
               help="Submit a task to the running orchestrator")
 app.add_typer(status_app,   name="status",   invoke_without_command=True,

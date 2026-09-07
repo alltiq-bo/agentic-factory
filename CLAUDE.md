@@ -10,7 +10,7 @@ Contexto del proyecto para cualquier sesión de Claude Code.
 Los proyectos que la usan son consumidores — no definen la arquitectura del Factory.
 
 El core debe mantenerse domain-agnostic, stack-agnostic y project-agnostic.
-La tecnología del proyecto target vive exclusivamente en: `teams/`, `profiles/`, `workflows/`, `.agentic/`.
+La tecnología del proyecto target vive exclusivamente en: `teams/`, `profiles/`, `workflows/`, `.agentiq/`.
 
 **Repo:** alltiq-bo/agentic-factory
 
@@ -48,7 +48,28 @@ python3 agentiq help                                          # referencia compl
 | `CLAUDE_CONFIG_DIR` | Sesión Claude a usar (ej. `~/.claude-personal`) |
 | `CLAUDE_ADD_DIRS` | Dirs accesibles por subprocess, separados por `:` |
 | `CLAUDE_TIMEOUT` | Timeout en segundos por llamada al CLI (default: 600) |
-| `AGENTIC_PROJECT_DIR` | Dir del proyecto con `.agentic/` — override de config |
+| `AGENTIC_PROJECT_DIR` | Dir del proyecto con `.agentiq/` — override de config |
+
+---
+
+## Regla de extensibilidad
+
+Antes de modificar código del core, verificar si la necesidad puede resolverse por configuración o extensión.
+
+**Jerarquía (respetar orden):**
+
+| Nivel | Mecanismo | Ejemplo |
+|-------|-----------|---------|
+| 1 | Configuration / YAML | Cambiar modelo LLM, timeout, temperatura |
+| 2 | Profile | Agregar conocimiento especializado a un rol |
+| 3 | Skill | Capacidad reutilizable de un agente (ej. `code_review`) |
+| 4 | Tool | Function calling: GitHub API, linter, compilador |
+| 5 | Workflow | Agregar o reordenar pasos |
+| 6 | Team | Combinar roles, profiles y workflows de forma nueva |
+| 7 | Plugin / Adapter | Nuevo proveedor LLM, nuevo backend de estado |
+| 8 | Core change | Solo si los 7 niveles anteriores son insuficientes |
+
+Una necesidad específica de un proyecto consumidor **nunca justifica un Core change** si puede resolverse en los niveles 1–7.
 
 ---
 
@@ -56,7 +77,7 @@ python3 agentiq help                                          # referencia compl
 
 **Agentic Factory es domain/stack/project-agnostic**
 El core no tiene referencias a tecnologías, roles de dominio ni proyectos específicos.
-Todo lo específico va en teams, profiles, workflows o `.agentic/` del proyecto consumidor.
+Todo lo específico va en teams, profiles, workflows o `.agentiq/` del proyecto consumidor.
 
 **WorkflowEngine es domain-agnóstico**
 El engine NO tiene `if step.agent_role == "qa"` ni nombres hardcodeados.
@@ -103,4 +124,4 @@ No agregar ese flag al CLI — falla con rc=1 cuando el proceso corre como root.
 - Workflows: `software_development`, `analysis_only`.
 - Proveedor activo en teams de ejemplo: `claude_code`.
 - CLI `agentiq`: `doctor` · `validate` · `init` · `run` · `status` · `logs` · `help` · `team/workflow/profile list`.
-- `ConfigLoader` soporta `AGENTIC_PROJECT_DIR` para config externa en `.agentic/`.
+- `ConfigLoader` soporta `AGENTIC_PROJECT_DIR` para config externa en `.agentiq/`.

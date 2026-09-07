@@ -106,12 +106,12 @@ def load_workflow(name: str, base_dir: Path | None = None) -> WorkflowDefinition
     """Load a workflow YAML by name.
 
     If *base_dir* is provided (or ``AGENTIC_PROJECT_DIR`` env var is set),
-    ``<base_dir>/.agentic/<name>.yaml`` is tried first before falling back to
+    ``<base_dir>/.agentiq/<name>.yaml`` is tried first before falling back to
     the factory ``workflows/`` directory.
     """
     resolved = _resolve_base_dir(base_dir)
     if resolved is not None:
-        candidate = resolved / ".agentic" / f"{name}.yaml"
+        candidate = resolved / ".agentiq" / f"{name}.yaml"
         if candidate.exists():
             return _parse_workflow(_load_yaml(candidate))
     path = WORKFLOWS_DIR / f"{name}.yaml"
@@ -122,12 +122,12 @@ def load_team(team_name: str, base_dir: Path | None = None) -> TeamDefinition:
     """Load a team YAML by name.
 
     If *base_dir* is provided (or ``AGENTIC_PROJECT_DIR`` env var is set),
-    ``<base_dir>/.agentic/team.yaml`` is tried first before falling back to
+    ``<base_dir>/.agentiq/team.yaml`` is tried first before falling back to
     the factory ``teams/`` directory.
     """
     resolved = _resolve_base_dir(base_dir)
     if resolved is not None:
-        candidate = resolved / ".agentic" / "team.yaml"
+        candidate = resolved / ".agentiq" / "team.yaml"
         if candidate.exists():
             path = candidate
         else:

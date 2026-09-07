@@ -80,7 +80,7 @@ def _run_validate(team_name: Optional[str], workflow_name: Optional[str]) -> Non
     rprint(f"\n[bold]Profiles[/bold]")
     profiles_dir = _factory_dir("profiles")
     project_dir = os.environ.get("AGENTIC_PROJECT_DIR")
-    project_profiles_dir = Path(project_dir) / ".agentic" / "profiles" if project_dir else None
+    project_profiles_dir = Path(project_dir) / ".agentiq" / "profiles" if project_dir else None
 
     for agent in team_data.get("agents", []):
         profile = agent.get("profile")
