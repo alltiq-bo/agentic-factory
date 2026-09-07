@@ -215,18 +215,12 @@ class Orchestrator:
             logger.warning("GitHub comment skipped — missing repo, number or GH_TOKEN")
             return
 
-        # Build comment body from agent outputs
-        lines = [f"## Resultado del equipo de agentes\n\n**Estado:** {run.status.upper()}\n"]
-
-        for step_name, result in run.results.items():
-            lines.append(f"### {step_name} ({result.agent_role})")
-            lines.append(result.output or "_sin output_")
-            lines.append("")
-
-        if run.error:
-            lines.append(f"\n> **Error:** {run.error}")
-
-        body = "\n".join(lines)
+        # Comentario corto — solo estado y pasos ejecutados
+        pasos = ", ".join(run.results.keys()) or "ninguno"
+        if run.status == "done":
+            body = f"✅ Completado por agentes ({pasos})."
+        else:
+            body = f"❌ Fallido en `{run.error or 'error desconocido'}` — pasos ejecutados: {pasos}."
 
         url = f"https://api.github.com/repos/{repo}/issues/{number}/comments"
         headers = {
