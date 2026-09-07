@@ -5,7 +5,7 @@ Registers all commands and sub-apps.
 import typer
 
 app = typer.Typer(
-    name="agentic",
+    name="agentiq",
     help="Agentic Factory — AI agent team orchestration CLI",
     no_args_is_help=True,
     rich_markup_mode="rich",
