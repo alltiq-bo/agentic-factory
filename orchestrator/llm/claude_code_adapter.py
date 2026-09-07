@@ -45,15 +45,17 @@ class ClaudeCodeProvider(LLMProvider):
 
     def __init__(self, config: LLMConfig):
         super().__init__(config)
-        if not shutil.which("claude"):
+        # CLAUDE_BIN permite usar claude-personal u otro binario
+        self._bin = os.environ.get("CLAUDE_BIN", "claude")
+        if not shutil.which(self._bin):
             raise RuntimeError(
-                "claude CLI no encontrado en PATH. "
-                "Instalá Claude Code: npm install -g @anthropic-ai/claude-code"
+                f"claude CLI '{self._bin}' no encontrado en PATH. "
+                f"Configurá CLAUDE_BIN o instalá Claude Code."
             )
 
     def _build_cmd(self) -> list[str]:
         cmd = [
-            "claude", "-p",
+            self._bin, "-p",
             "--output-format", "json",
             "--no-session-persistence",
         ]
