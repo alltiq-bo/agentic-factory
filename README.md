@@ -300,6 +300,8 @@ conocimiento especializado inyectado por el ContextBuilder.
 | **Role Agents** | `agents/*/agent.py` | Solo definen `ROLE_INSTRUCTIONS` y `_parse_output()` |
 | **KnowledgeBase** | `knowledge_base/store.py` | Dos capas: `load_project_knowledge()` + `write/read_artifacts()` |
 | **API** | `orchestrator/api/main.py` | FastAPI: `POST /tasks`, `GET /tasks/{id}`, `GET /health` |
+| **CLI** | `cli/` + `agentiq` | `doctor` · `validate` · `init` · `run` · `status` · `logs` · `help` · `list` |
+| **ClaudeCodeAdapter** | `orchestrator/llm/claude_code_adapter.py` | LLM via `claude -p` subprocess — sin API key, usa sesión OAuth local |
 
 ---
 
@@ -429,7 +431,7 @@ agentic_factory/
 │   └── analysis_only.yaml          # Solo analyst + architect (análisis y diseño)
 │
 ├── teams/
-│   ├── dotnet-react-migration.yaml # Caso inicial: .NET MVC 5 → .NET 8 + React
+│   ├── dotnet-react-migration.yaml # Ejemplo de team
 │   └── default_team.yaml
 │
 ├── guidelines/                     # Lineamientos vivos del proyecto
@@ -445,6 +447,24 @@ agentic_factory/
 │   ├── 04_state_machine.mmd
 │   └── 05_knowledge_base.mmd
 │
+├── cli/                            # CLI agentiq
+│   ├── main.py                     # Typer root app — registra todos los comandos
+│   ├── commands/
+│   │   ├── doctor.py               # agentiq doctor — health check
+│   │   ├── validate.py             # agentiq validate — valida YAML + referencias
+│   │   ├── init.py                 # agentiq init — wizard de nuevo proyecto
+│   │   ├── run.py                  # agentiq run — submit de tareas
+│   │   ├── status.py               # agentiq status <task_id>
+│   │   ├── logs.py                 # agentiq logs — tail del log
+│   │   ├── list_cmd.py             # agentiq team/workflow/profile list
+│   │   └── help_cmd.py             # agentiq help — referencia + roadmap
+│   └── templates/                  # Plantillas para agentiq init
+│       ├── team.yaml
+│       ├── workflow.yaml
+│       └── project.yaml
+│
+├── agentiq                         # Entry point ejecutable
+├── CLAUDE.md                       # Contexto del proyecto para Claude Code
 ├── docker-compose.yml
 ├── requirements.txt
 └── .env.example
@@ -515,8 +535,8 @@ steps:
 |---------|---------|-----|
 | `software_analysis` | `profiles/software_analysis.md` | Analyst en cualquier equipo |
 | `software_architecture` | `profiles/software_architecture.md` | Architect en cualquier equipo |
-| `dotnet8` | `profiles/dotnet8.md` | Backend Developer .NET 8 + EF Core + ASP.NET Core |
-| `react` | `profiles/react.md` | Frontend Developer React 18 + TypeScript + Vite |
+| `dotnet8` | `profiles/dotnet8.md` | Ejemplo: Backend Developer .NET |
+| `react` | `profiles/react.md` | Ejemplo: Frontend Developer React |
 | `software_qa` | `profiles/software_qa.md` | QA en cualquier equipo |
 
 Para crear un nuevo profile: agregar `profiles/<nombre>.md` con el conocimiento especializado.
@@ -537,15 +557,35 @@ Ejemplo con `claude_code` (sin API key de Anthropic):
 
 ```env
 GH_TOKEN=ghp_xxxxxxxxxxxx          # Personal Access Token con scopes: repo, project
-TEAM_CONFIG=dotnet-react-migration
+TEAM_CONFIG=my-team
 LOG_LEVEL=INFO
-CLAUDE_BIN=/root/.npm-global/bin/claude
-CLAUDE_CONFIG_DIR=~/.claude-personal
-CLAUDE_ADD_DIRS=/home/apps/web/react/web.agro.nt   # directorios accesibles por agentes
+CLAUDE_BIN=/usr/local/bin/claude
+CLAUDE_CONFIG_DIR=~/.claude
+CLAUDE_ADD_DIRS=/path/to/project   # directorios accesibles por los agentes
 CLAUDE_TIMEOUT=600
 ```
 
-### 2. Levantar Redis y el orquestador
+### 2. Verificar entorno
+
+```bash
+python3 agentiq doctor
+```
+
+```
+Environment
+  ✓ Python 3.10.12
+  ✓ CLAUDE_BIN: /root/.npm-global/bin/claude
+  ✓ Redis reachable at redis://localhost:6379
+Configuration
+  ✓ .env found
+  ✓ GH_TOKEN set
+  ✓ Team YAML parseable
+Orchestrator
+  ✓ Orchestrator health check passed
+✅ Ready
+```
+
+### 3. Levantar Redis y el orquestador
 
 ```bash
 # Redis en Docker
@@ -555,27 +595,40 @@ docker compose up redis -d
 source .env && export $(grep -v '^#' .env | xargs)
 nohup python3 -m uvicorn orchestrator.api.main:app --host 0.0.0.0 --port 8000 \
   > /tmp/orchestrator.log 2>&1 &
-
-# Ver logs en tiempo real
-tail -f /tmp/orchestrator.log
 ```
 
-> **Nota:** Con proveedores cloud (Anthropic/OpenAI) el stack completo puede correr en Docker.
+> Con proveedores cloud (Anthropic/OpenAI) el stack completo puede correr en Docker.
 > Con `claude_code` el orquestador debe correr en el host porque el token OAuth está ligado a la sesión local.
 
-### 3. Enviar una tarea desde texto libre (async)
+### 4. Enviar tareas con el CLI
 
 ```bash
-curl -X POST http://localhost:8000/tasks \
-  -H "Content-Type: application/json" \
-  -d '{
-    "project_id": "migration-001",
-    "input": "Migrate the user authentication module from .NET MVC 5 to .NET 8 + React"
-  }'
-# → { "task_id": "...", "status": "created" }
+# Desde un GitHub Issue
+python3 agentiq run --issue owner/repo#12 --workflow analysis_only
+
+# Desde texto libre
+python3 agentiq run --input "Analizar módulo de autenticación"
+
+# Ver progreso
+python3 agentiq logs
+
+# Consultar estado
+python3 agentiq status <task_id>
 ```
 
-### 4. Enviar desde un GitHub Issue
+### 5. Referencia de comandos
+
+```bash
+python3 agentiq help
+```
+
+| Grupo | Comandos |
+|-------|----------|
+| Setup | `doctor` · `init` · `validate` |
+| Ejecución | `run` · `status` · `logs` |
+| Recursos | `team list` · `workflow list` · `profile list` |
+
+### 6. Enviar vía API directa (alternativa al CLI)
 
 ```bash
 curl -X POST http://localhost:8000/tasks/sync \
@@ -587,27 +640,20 @@ curl -X POST http://localhost:8000/tasks/sync \
   }'
 ```
 
-Campos opcionales de la request:
+Campos del request:
 
 | Campo | Descripción |
 |-------|-------------|
 | `input` | Texto libre de la tarea |
-| `github_issue` | `{ "repo": "owner/repo", "number": N }` — fetcha el issue automáticamente |
+| `github_issue` | `{ "repo": "owner/repo", "number": N }` |
 | `workflow` | Override del workflow (ej. `analysis_only`, `software_development`) |
-| `team` | Override del equipo (ej. `dotnet-react-migration`) |
+| `team` | Override del equipo |
 | `project_id` | Identificador del proyecto |
 | `task_id` | ID custom (se genera UUID si se omite) |
 
 Al completar, el orquestador:
 - Postea un comentario corto en el issue (`✅ Completado por agentes (analyst, architect).`)
 - Mueve la tarjeta a **Done** en el GitHub Project asociado (requiere scope `project` en el token)
-
-### 5. Consultar estado
-
-```bash
-curl http://localhost:8000/tasks/{task_id}
-# → { "status": "validating", "current_step": "validate", "qa_cycle": 1 }
-```
 
 ---
 
@@ -674,7 +720,7 @@ class MiProveedorLLM(LLMProvider):
 Usa el CLI `claude -p` con la sesión activa de Claude Code. No requiere `ANTHROPIC_API_KEY`.
 
 ```yaml
-# teams/dotnet-react-migration.yaml
+# teams/my-team.yaml
 agents:
   - role: analyst
     profile: software_analysis

@@ -6,11 +6,13 @@ Contexto del proyecto para cualquier sesión de Claude Code.
 
 ## Proyecto
 
-Plataforma reutilizable para orquestar equipos de agentes AI en proyectos de software.
-Equipos definidos por YAML — sin modificar código para crear un equipo nuevo.
+**Agentic Factory** es la plataforma/producto. Orquesta equipos de agentes AI configurables por YAML.
+Los proyectos que la usan son consumidores — no definen la arquitectura del Factory.
 
-**Repo:** alltiq-bo/agentic-factory  
-**Proyecto target:** vega-bo/web.agro.nt (migración .NET MVC 5 → .NET 9 + React)
+El core debe mantenerse domain-agnostic, stack-agnostic y project-agnostic.
+La tecnología del proyecto target vive exclusivamente en: `teams/`, `profiles/`, `workflows/`, `.agentic/`.
+
+**Repo:** alltiq-bo/agentic-factory
 
 ---
 
@@ -22,15 +24,16 @@ Redis en Docker, orquestador en host (claude_code no funciona dentro de Docker �
 docker compose up redis -d
 source .env && export $(grep -v '^#' .env | xargs)
 nohup python3 -m uvicorn orchestrator.api.main:app --host 0.0.0.0 --port 8000 > /tmp/orchestrator.log 2>&1 &
-tail -f /tmp/orchestrator.log
 ```
 
-Lanzar tarea desde GitHub Issue:
+CLI:
 
 ```bash
-curl -X POST http://localhost:8000/tasks/sync \
-  -H "Content-Type: application/json" \
-  -d '{"github_issue": {"repo": "vega-bo/web.agro.nt", "number": 12}, "workflow": "analysis_only", "project_id": "web-agro-nt"}'
+python3 agentiq doctor                                        # verificar entorno
+python3 agentiq run --issue owner/repo#N --workflow analysis_only
+python3 agentiq logs
+python3 agentiq status <task_id>
+python3 agentiq help                                          # referencia completa
 ```
 
 ---
@@ -40,37 +43,46 @@ curl -X POST http://localhost:8000/tasks/sync \
 | Variable | Descripción |
 |----------|-------------|
 | `GH_TOKEN` | Personal Access Token GitHub — scopes: `repo` + `project` |
-| `TEAM_CONFIG` | Nombre del team YAML (ej. `dotnet-react-migration`) |
-| `CLAUDE_BIN` | Path al binario claude (ej. `/root/.npm-global/bin/claude`) |
-| `CLAUDE_CONFIG_DIR` | Sesión Claude a usar (ej. `~/.claude-personal`, `~/.claude-work`) |
+| `TEAM_CONFIG` | Nombre del team YAML |
+| `CLAUDE_BIN` | Path al binario claude |
+| `CLAUDE_CONFIG_DIR` | Sesión Claude a usar (ej. `~/.claude-personal`) |
 | `CLAUDE_ADD_DIRS` | Dirs accesibles por subprocess, separados por `:` |
 | `CLAUDE_TIMEOUT` | Timeout en segundos por llamada al CLI (default: 600) |
+| `AGENTIC_PROJECT_DIR` | Dir del proyecto con `.agentic/` — override de config |
 
 ---
 
 ## Decisiones de arquitectura — NO revertir
 
-**WorkflowEngine es domain-agnóstico**  
-El engine NO tiene `if step.agent_role == "qa"` ni nombres hardcodeados. La política de requeue se lee de `on_fail.requeue[]` en el YAML.
+**Agentic Factory es domain/stack/project-agnostic**
+El core no tiene referencias a tecnologías, roles de dominio ni proyectos específicos.
+Todo lo específico va en teams, profiles, workflows o `.agentic/` del proyecto consumidor.
 
-**Profile separado del Role**  
-El conocimiento especializado vive en `profiles/<name>.md`, no en la clase Python. ContextBuilder lo inyecta en el system message.
+**WorkflowEngine es domain-agnóstico**
+El engine NO tiene `if step.agent_role == "qa"` ni nombres hardcodeados.
+La política de requeue se lee de `on_fail.requeue[]` en el YAML.
 
-**ContextBuilder filtra artefactos por step**  
-Los agentes NO reciben el diccionario completo de task_artifacts. Solo lo que define `context_keys:` en el workflow YAML.
+**Profile separado del Role**
+El conocimiento especializado vive en `profiles/<name>.md`, no en la clase Python.
+ContextBuilder lo inyecta en el system message.
 
-**BaseAgent recibe messages pre-construidos**  
-`BaseAgent.run(messages)` es solo LLM caller + output parser. El Orchestrator llama a ContextBuilder antes.
+**ContextBuilder filtra artefactos por step**
+Los agentes NO reciben el diccionario completo de task_artifacts.
+Solo lo que define `context_keys:` en el workflow YAML.
 
-**KB en dos capas**  
-- Project Knowledge: `guidelines/` + `profiles/` — permanente  
+**BaseAgent recibe messages pre-construidos**
+`BaseAgent.run(messages)` es solo LLM caller + output parser.
+El Orchestrator llama a ContextBuilder antes.
+
+**KB en dos capas**
+- Project Knowledge: `guidelines/` + `profiles/` — permanente
 - Task Artifacts: Redis (o in-memory) — por tarea, por ciclo QA
 
-**QA etiqueta issues con profile responsable**  
-Formato: `- [SEVERITY] descripción | agent: <role> | profile: <profile_name>`  
+**QA etiqueta issues con profile responsable**
+Formato: `- [SEVERITY] descripción | agent: <role> | profile: <profile_name>`
 Sin el tag, el mecanismo de retroalimentación de profiles no funciona.
 
-**`--permission-mode bypassPermissions` está bloqueado en root**  
+**`--permission-mode bypassPermissions` está bloqueado en root**
 No agregar ese flag al CLI — falla con rc=1 cuando el proceso corre como root.
 
 ---
@@ -81,14 +93,14 @@ No agregar ese flag al CLI — falla con rc=1 cuando el proceso corre como root.
 - No firmar commits con nombre de Claude ni Co-Authored-By.
 - Explicar qué se va a editar antes de editar archivos de configuración críticos.
 - Comentarios en GitHub: cortos, una línea.
-- Commits: solo cuando el usuario confirme explícitamente.
+- Preguntar antes de hacer commit o push.
 
 ---
 
 ## Estado actual
 
-- MVP funcional. Demo exitosa con issue #12 (analyst + architect, workflow `analysis_only`).
-- GitHub comment ✅ funcionando.
-- Mover tarjeta en GitHub Project: requiere scope `project` en el GH_TOKEN.
-- Workflows disponibles: `software_development`, `analysis_only`.
-- Proveedor activo: `claude_code` (todos los agentes del team `dotnet-react-migration`).
+- MVP funcional. GitHub comment ✅. Mover tarjeta: requiere scope `project` en GH_TOKEN.
+- Workflows: `software_development`, `analysis_only`.
+- Proveedor activo en teams de ejemplo: `claude_code`.
+- CLI `agentiq`: `doctor` · `validate` · `init` · `run` · `status` · `logs` · `help` · `team/workflow/profile list`.
+- `ConfigLoader` soporta `AGENTIC_PROJECT_DIR` para config externa en `.agentic/`.
