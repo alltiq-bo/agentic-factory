@@ -21,6 +21,7 @@ from cli.commands.logs     import app as logs_app      # noqa: E402
 from cli.commands.list_cmd import (                    # noqa: E402
     team_app, workflow_app, profile_app,
 )
+from cli.commands.help_cmd import app as help_app      # noqa: E402
 
 app.add_typer(doctor_app,   name="doctor",   invoke_without_command=True,
               help="Health check of the environment")
@@ -34,6 +35,8 @@ app.add_typer(status_app,   name="status",   invoke_without_command=True,
               help="Check task status")
 app.add_typer(logs_app,     name="logs",     invoke_without_command=True,
               help="Tail /tmp/orchestrator.log")
+app.add_typer(help_app,     name="help",     invoke_without_command=True,
+              help="Full command reference and roadmap")
 app.add_typer(team_app,     name="team",     help="Team commands")
 app.add_typer(workflow_app, name="workflow", help="Workflow commands")
 app.add_typer(profile_app,  name="profile",  help="Profile commands")
