@@ -1,10 +1,10 @@
 # ============================================================
 # Team: dotnet-react-migration
-# Migración de .NET MVC 5 hacia .NET 8 + React
+# Proyecto: API Agrícola 2G — .NET 9 + React
 # ============================================================
 team:
   name: dotnet-react-migration
-  description: Migration team for .NET MVC 5 to .NET 8 + React
+  description: Equipo para evolución del proyecto API Agrícola 2G (.NET 9 + React)
 
 agents:
   - role: analyst
@@ -24,7 +24,7 @@ agents:
       max_tokens: 8192
 
   - role: backend_developer
-    profile: dotnet8
+    profile: api_agricola          # profile específico del proyecto
     llm:
       provider: anthropic
       model: claude-sonnet-4-6
