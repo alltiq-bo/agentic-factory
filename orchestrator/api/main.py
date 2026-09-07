@@ -1,14 +1,16 @@
 """
 FastAPI application — Orchestrator API.
 
-POST /tasks        → submit a new task
-GET  /tasks/{id}   → query task status
+POST /tasks        → submit a task (texto libre o referencia a GitHub issue)
+POST /tasks/sync   → igual pero espera el resultado
+GET  /tasks/{id}   → consultar estado
 GET  /health       → liveness check
 """
 from __future__ import annotations
 import os
 import logging
 
+import httpx
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
@@ -62,18 +64,67 @@ def get_orchestrator() -> Orchestrator:
     )
 
 
+# ── GitHub issue fetcher ──────────────────────────────────────────────────
+
+class GitHubIssueRef(BaseModel):
+    repo:   str = Field(..., description="owner/repo — ej. vega-bo/web.agro.nt")
+    number: int = Field(..., description="Número del issue")
+
+
+async def fetch_github_issue(ref: GitHubIssueRef) -> str:
+    """
+    Fetcha el issue de GitHub y retorna un texto listo para el agente.
+    Usa GH_TOKEN si está disponible (necesario para repos privados).
+    """
+    url = f"https://api.github.com/repos/{ref.repo}/issues/{ref.number}"
+    headers = {"Accept": "application/vnd.github+json"}
+    token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+
+    async with httpx.AsyncClient(timeout=15) as client:
+        resp = await client.get(url, headers=headers)
+
+    if resp.status_code == 404:
+        raise HTTPException(status_code=404,
+                            detail=f"Issue #{ref.number} no encontrado en {ref.repo}")
+    if resp.status_code == 401:
+        raise HTTPException(status_code=401,
+                            detail="GH_TOKEN requerido para acceder a este repo")
+    resp.raise_for_status()
+
+    data = resp.json()
+    title  = data.get("title", "")
+    body   = data.get("body") or ""
+    labels = [l["name"] for l in data.get("labels", [])]
+    label_str = f"[{', '.join(labels)}]" if labels else ""
+
+    return (
+        f"GitHub Issue #{ref.number} — {ref.repo} {label_str}\n"
+        f"## {title}\n\n"
+        f"{body}"
+    )
+
+
 # ── Request / Response models ─────────────────────────────────────────────
 
 class TaskRequest(BaseModel):
-    input:      str = Field(..., description="Task description or GitHub issue body")
-    project_id: str = Field(default="default", description="Project identifier")
-    task_id:    str | None = Field(default=None, description="Optional task ID (generated if omitted)")
+    input:        str | None          = Field(default=None, description="Texto libre de la tarea")
+    github_issue: GitHubIssueRef | None = Field(default=None, description="Referencia a un issue de GitHub")
+    team:         str | None          = Field(default=None, description="Nombre del team (override de TEAM_CONFIG)")
+    project_id:   str                 = Field(default="default", description="Identificador del proyecto")
+    task_id:      str | None          = Field(default=None, description="ID de tarea (se genera si se omite)")
+
+    def model_post_init(self, __context):
+        if not self.input and not self.github_issue:
+            raise ValueError("Se requiere 'input' o 'github_issue'")
 
 
 class TaskResponse(BaseModel):
     task_id:  str
     status:   str
-    workflow: str
+    team:     str
+    source:   str   # "text" | "github_issue"
 
 
 class TaskStatusResponse(BaseModel):
@@ -86,47 +137,81 @@ class TaskStatusResponse(BaseModel):
     updated_at:   str
 
 
+# ── Helpers ───────────────────────────────────────────────────────────────
+
+async def resolve_input(request: TaskRequest) -> str:
+    if request.github_issue:
+        logger.info("Fetching GitHub issue %s#%d",
+                    request.github_issue.repo, request.github_issue.number)
+        return await fetch_github_issue(request.github_issue)
+    return request.input
+
+
+def resolve_team(request: TaskRequest) -> str:
+    return request.team or os.environ.get("TEAM_CONFIG", "dotnet-react-migration")
+
+
 # ── Routes ────────────────────────────────────────────────────────────────
 
 @app.post("/tasks", response_model=TaskResponse, status_code=202)
 async def submit_task(request: TaskRequest):
-    """Submit a task to the agent team. Returns immediately with task_id."""
+    """Envía una tarea al equipo de agentes. Retorna inmediatamente con task_id."""
     import asyncio
-    orch = get_orchestrator()
+    input_text = await resolve_input(request)
+    team       = resolve_team(request)
+    orch       = Orchestrator(
+        state_manager  = _state_manager,
+        knowledge_base = _knowledge_base,
+        team_name      = team,
+    )
 
-    # Run workflow in background — caller polls GET /tasks/{id}
     asyncio.create_task(
         orch.run_task(
-            input_text = request.input,
+            input_text = input_text,
             project_id = request.project_id,
             task_id    = request.task_id,
         )
     )
 
-    # The task_id is set synchronously before the background task runs
-    task_id = request.task_id or "pending"  # runner sets it after create_task
     return TaskResponse(
-        task_id  = task_id,
-        status   = "created",
-        workflow = os.environ.get("TEAM_CONFIG", "dotnet-react-migration"),
+        task_id = request.task_id or "pending",
+        status  = "created",
+        team    = team,
+        source  = "github_issue" if request.github_issue else "text",
     )
 
 
 @app.post("/tasks/sync", response_model=dict)
 async def submit_task_sync(request: TaskRequest):
-    """Submit a task and wait for completion. Returns full workflow run."""
-    orch = get_orchestrator()
-    run  = await orch.run_task(
-        input_text = request.input,
+    """Envía una tarea y espera el resultado completo."""
+    input_text = await resolve_input(request)
+    team       = resolve_team(request)
+    orch       = Orchestrator(
+        state_manager  = _state_manager,
+        knowledge_base = _knowledge_base,
+        team_name      = team,
+    )
+
+    run = await orch.run_task(
+        input_text = input_text,
         project_id = request.project_id,
         task_id    = request.task_id,
     )
+
     return {
-        "task_id":      run.task_id,
-        "status":       run.status,
-        "qa_cycle":     run.qa_cycle,
-        "error":        run.error,
-        "steps_run":    list(run.results.keys()),
+        "task_id":   run.task_id,
+        "status":    run.status,
+        "team":      team,
+        "qa_cycle":  run.qa_cycle,
+        "error":     run.error,
+        "steps_run": list(run.results.keys()),
+        "results":   {
+            step: {
+                "role":   r.agent_role,
+                "output": r.output,
+            }
+            for step, r in run.results.items()
+        },
     }
 
 
