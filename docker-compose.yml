@@ -34,7 +34,7 @@ services:
         condition: service_healthy
     environment:
       REDIS_URL: redis://redis:6379
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
       GH_TOKEN: ${GH_TOKEN:-}
@@ -47,7 +47,8 @@ services:
       - ./teams:/app/teams
       - ./workflows:/app/workflows
       # Sesión de Claude Code del host — evita re-autenticación
-      - ~/.claude:/root/.claude:ro
+      - ~/.claude:/root/.claude
+      - ~/.claude.json:/root/.claude.json
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 10s
