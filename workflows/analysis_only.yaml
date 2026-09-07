@@ -1,0 +1,20 @@
+name: analysis_only
+
+# Workflow para tareas de análisis y diseño.
+# Solo corre analyst + architect — sin implementación ni QA.
+# Usar cuando el issue pide: análisis, diseño, README, ADRs, contexto inicial.
+
+steps:
+  - name: analyze_requirements
+    agent_role: analyst
+    mode: sequential
+    depends_on: []
+    context_keys: []
+    retry_max: 2
+
+  - name: design_solution
+    agent_role: architect
+    mode: sequential
+    depends_on: [analyze_requirements]
+    context_keys: [analysis]
+    retry_max: 2

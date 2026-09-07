@@ -15,9 +15,12 @@ Responsibilities:
 """
 from __future__ import annotations
 import logging
+import os
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
+
+import httpx
 
 from orchestrator.core.models import (
     AgentDefinition, AgentResult, AgentRunStatus,
@@ -73,6 +76,7 @@ class Orchestrator:
         input_text: str,
         project_id: str = "default",
         task_id: Optional[str] = None,
+        github_issue: Optional[dict] = None,   # {"repo": "owner/repo", "number": N}
     ) -> WorkflowRun:
         task_id = task_id or str(uuid.uuid4())
 
@@ -121,6 +125,10 @@ class Orchestrator:
 
         # ── 5. Flush profile suggestions from QA ──────────────────────────
         await self._flush_profile_suggestions(context, task_id)
+
+        # ── 6. Post comment to GitHub issue if origin was an issue ────────
+        if github_issue:
+            await self._post_github_comment(github_issue, run)
 
         return run
 
@@ -195,6 +203,46 @@ class Orchestrator:
         self, step: WorkflowStep, result: AgentResult, context: TaskContext
     ) -> None:
         logger.error("Step [%s] failed — %s", step.name, result.error)
+
+    # ── GitHub comment ────────────────────────────────────────────────────
+
+    async def _post_github_comment(self, github_issue: dict, run: WorkflowRun) -> None:
+        repo   = github_issue.get("repo", "")
+        number = github_issue.get("number")
+        token  = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
+
+        if not repo or not number or not token:
+            logger.warning("GitHub comment skipped — missing repo, number or GH_TOKEN")
+            return
+
+        # Build comment body from agent outputs
+        lines = [f"## Resultado del equipo de agentes\n\n**Estado:** {run.status.upper()}\n"]
+
+        for step_name, result in run.results.items():
+            lines.append(f"### {step_name} ({result.agent_role})")
+            lines.append(result.output or "_sin output_")
+            lines.append("")
+
+        if run.error:
+            lines.append(f"\n> **Error:** {run.error}")
+
+        body = "\n".join(lines)
+
+        url = f"https://api.github.com/repos/{repo}/issues/{number}/comments"
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/vnd.github+json",
+        }
+
+        try:
+            async with httpx.AsyncClient(timeout=15) as client:
+                resp = await client.post(url, headers=headers, json={"body": body})
+            if resp.status_code == 201:
+                logger.info("GitHub comment posted → %s#%s", repo, number)
+            else:
+                logger.warning("GitHub comment failed: %s %s", resp.status_code, resp.text[:200])
+        except Exception as e:
+            logger.warning("GitHub comment error: %s", e)
 
     # ── Profile suggestion flush ───────────────────────────────────────────
 

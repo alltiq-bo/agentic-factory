@@ -165,11 +165,14 @@ async def submit_task(request: TaskRequest):
         team_name      = team,
     )
 
+    github_issue = request.github_issue.model_dump() if request.github_issue else None
+
     asyncio.create_task(
         orch.run_task(
-            input_text = input_text,
-            project_id = request.project_id,
-            task_id    = request.task_id,
+            input_text   = input_text,
+            project_id   = request.project_id,
+            task_id      = request.task_id,
+            github_issue = github_issue,
         )
     )
 
@@ -192,10 +195,13 @@ async def submit_task_sync(request: TaskRequest):
         team_name      = team,
     )
 
+    github_issue = request.github_issue.model_dump() if request.github_issue else None
+
     run = await orch.run_task(
-        input_text = input_text,
-        project_id = request.project_id,
-        task_id    = request.task_id,
+        input_text   = input_text,
+        project_id   = request.project_id,
+        task_id      = request.task_id,
+        github_issue = github_issue,
     )
 
     return {
