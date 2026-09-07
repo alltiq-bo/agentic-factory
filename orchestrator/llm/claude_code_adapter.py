@@ -46,8 +46,8 @@ class ClaudeCodeProvider(LLMProvider):
 
     def __init__(self, config: LLMConfig):
         super().__init__(config)
-        # CLAUDE_BIN permite usar claude-personal u otro binario
-        self._bin = os.environ.get("CLAUDE_BIN", "claude")
+        self._bin        = os.environ.get("CLAUDE_BIN", "claude")
+        self._config_dir = os.environ.get("CLAUDE_CONFIG_DIR")  # ej. ~/.claude-personal
         if not shutil.which(self._bin):
             raise RuntimeError(
                 f"claude CLI '{self._bin}' no encontrado en PATH. "
@@ -68,11 +68,17 @@ class ClaudeCodeProvider(LLMProvider):
         prompt = _build_prompt(messages)
         cmd    = self._build_cmd()
 
+        # Heredar entorno del proceso padre e inyectar CLAUDE_CONFIG_DIR si está configurado
+        env = os.environ.copy()
+        if self._config_dir:
+            env["CLAUDE_CONFIG_DIR"] = os.path.expanduser(self._config_dir)
+
         proc = await asyncio.create_subprocess_exec(
             *cmd,
             stdin  = asyncio.subprocess.PIPE,
             stdout = asyncio.subprocess.PIPE,
             stderr = asyncio.subprocess.PIPE,
+            env    = env,
         )
 
         timeout = max(self.config.timeout, 300)  # mínimo 5 min para tareas largas
