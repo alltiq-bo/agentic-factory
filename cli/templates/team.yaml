@@ -1,0 +1,25 @@
+# ============================================================
+# Team template — customize for your project
+# ============================================================
+team:
+  name: my_team
+  description: Custom team for this project
+
+agents:
+  - role: analyst
+    profile: software_analysis
+    llm:
+      provider: claude_code   # claude_code | anthropic | openai | ollama
+      model: sonnet
+      temperature: 0.4
+      max_tokens: 4096
+
+  - role: architect
+    profile: software_architecture
+    llm:
+      provider: claude_code
+      model: sonnet
+      temperature: 0.3
+      max_tokens: 8192
+
+workflow: analysis_only

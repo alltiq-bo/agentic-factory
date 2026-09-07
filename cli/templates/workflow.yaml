@@ -1,0 +1,21 @@
+# ============================================================
+# Workflow: analysis_only
+# Runs analyst → architect (no implementation or QA).
+# Suitable for: analysis, design, README, ADRs, initial context.
+# ============================================================
+name: analysis_only
+
+steps:
+  - name: analyze_requirements
+    agent_role: analyst
+    mode: sequential
+    depends_on: []
+    context_keys: []
+    retry_max: 2
+
+  - name: design_solution
+    agent_role: architect
+    mode: sequential
+    depends_on: [analyze_requirements]
+    context_keys: [analysis]
+    retry_max: 2

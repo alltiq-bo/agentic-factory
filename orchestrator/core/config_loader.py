@@ -28,6 +28,7 @@ Workflow YAML schema (workflows/*.yaml):
         value: "expected"
 """
 from __future__ import annotations
+import os
 import yaml
 from pathlib import Path
 from typing import Any
@@ -40,6 +41,14 @@ from orchestrator.core.models import (
 
 TEAMS_DIR     = Path(__file__).parents[2] / "teams"
 WORKFLOWS_DIR = Path(__file__).parents[2] / "workflows"
+
+
+def _resolve_base_dir(base_dir: Path | None) -> Path | None:
+    """Return base_dir if provided; otherwise fall back to AGENTIC_PROJECT_DIR env var."""
+    if base_dir is not None:
+        return base_dir
+    env_val = os.environ.get("AGENTIC_PROJECT_DIR")
+    return Path(env_val) if env_val else None
 
 
 def _load_yaml(path: Path) -> dict[str, Any]:
@@ -93,13 +102,38 @@ def _parse_workflow(raw: dict) -> WorkflowDefinition:
     return WorkflowDefinition(name=raw["name"], steps=steps)
 
 
-def load_workflow(name: str) -> WorkflowDefinition:
+def load_workflow(name: str, base_dir: Path | None = None) -> WorkflowDefinition:
+    """Load a workflow YAML by name.
+
+    If *base_dir* is provided (or ``AGENTIC_PROJECT_DIR`` env var is set),
+    ``<base_dir>/.agentic/<name>.yaml`` is tried first before falling back to
+    the factory ``workflows/`` directory.
+    """
+    resolved = _resolve_base_dir(base_dir)
+    if resolved is not None:
+        candidate = resolved / ".agentic" / f"{name}.yaml"
+        if candidate.exists():
+            return _parse_workflow(_load_yaml(candidate))
     path = WORKFLOWS_DIR / f"{name}.yaml"
     return _parse_workflow(_load_yaml(path))
 
 
-def load_team(team_name: str) -> TeamDefinition:
-    path = TEAMS_DIR / f"{team_name}.yaml"
+def load_team(team_name: str, base_dir: Path | None = None) -> TeamDefinition:
+    """Load a team YAML by name.
+
+    If *base_dir* is provided (or ``AGENTIC_PROJECT_DIR`` env var is set),
+    ``<base_dir>/.agentic/team.yaml`` is tried first before falling back to
+    the factory ``teams/`` directory.
+    """
+    resolved = _resolve_base_dir(base_dir)
+    if resolved is not None:
+        candidate = resolved / ".agentic" / "team.yaml"
+        if candidate.exists():
+            path = candidate
+        else:
+            path = TEAMS_DIR / f"{team_name}.yaml"
+    else:
+        path = TEAMS_DIR / f"{team_name}.yaml"
     raw  = _load_yaml(path)
 
     agents = [
@@ -113,7 +147,7 @@ def load_team(team_name: str) -> TeamDefinition:
 
     workflow_ref = raw.get("workflow")
     if isinstance(workflow_ref, str):
-        workflow = load_workflow(workflow_ref)
+        workflow = load_workflow(workflow_ref, base_dir=base_dir)
     else:
         workflow = _parse_workflow(workflow_ref)
 

@@ -1,0 +1,12 @@
+# ============================================================
+# Agentic Factory — Project Metadata
+# ============================================================
+project:
+  name: my_project
+  repo: owner/repo
+  description: ''
+
+# Override factory-level config for this project
+settings:
+  max_qa_cycles: 3
+  log_level: INFO
