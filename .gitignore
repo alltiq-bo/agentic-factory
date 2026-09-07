@@ -9,3 +9,5 @@ build/
 .venv/
 venv/
 profiles/*.suggestions.md
+nohup.out
+*.log
