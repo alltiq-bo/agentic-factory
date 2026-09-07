@@ -82,12 +82,22 @@ class ClaudeCodeProvider(LLMProvider):
             proc.kill()
             raise RuntimeError(f"claude CLI timeout después de {timeout}s")
 
+        stdout_str = stdout.decode()
+        stderr_str = stderr.decode()
+
         if proc.returncode != 0:
+            # El CLI a veces manda el error al stdout como JSON
+            detail = stderr_str.strip() or stdout_str.strip() or "sin detalle"
             raise RuntimeError(
-                f"claude CLI error (rc={proc.returncode}): {stderr.decode()[:500]}"
+                f"claude CLI error (rc={proc.returncode}): {detail[:500]}"
             )
 
-        raw      = json.loads(stdout.decode())
+        raw = json.loads(stdout_str)
+
+        # El CLI puede retornar rc=0 pero con is_error=true
+        if raw.get("is_error"):
+            raise RuntimeError(f"claude CLI is_error: {raw.get('result', '')[:300]}")
+
         content  = raw.get("result", "")
         usage    = raw.get("usage", {})
 
