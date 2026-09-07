@@ -1,21 +1,53 @@
 """
-Config Loader — reads team and workflow YAML configs and builds runtime objects.
+Config Loader — parses YAML team and workflow files into domain models.
+
+Team YAML schema (teams/*.yaml):
+  team:
+    name: dotnet-react-migration
+  agents:
+    - role: analyst
+      profile: software_analysis
+      llm: { provider, model, temperature, max_tokens }
+  workflow: software_development     # references workflows/<name>.yaml
+
+Workflow YAML schema (workflows/*.yaml):
+  name: software_development
+  steps:
+    - name: analyze_requirements
+      agent_role: analyst
+      mode: sequential
+      depends_on: []
+      context_keys: []
+      retry_max: 2
+      on_fail:                       # optional
+        requeue: [step_a, step_b]
+        max_cycles: 3
+      condition:                     # optional
+        artifact: some_key
+        operator: eq
+        value: "expected"
 """
 from __future__ import annotations
 import yaml
 from pathlib import Path
 from typing import Any
 
-from orchestrator.llm import LLMConfig
-from orchestrator.core.workflow_engine import WorkflowDefinition, WorkflowStep, StepMode
+from orchestrator.core.models import (
+    AgentDefinition, FailPolicy, LLMConfig,
+    StepCondition, StepMode,
+    TeamDefinition, WorkflowDefinition, WorkflowStep,
+)
+
+TEAMS_DIR     = Path(__file__).parents[2] / "teams"
+WORKFLOWS_DIR = Path(__file__).parents[2] / "workflows"
 
 
-def load_yaml(path: str | Path) -> dict[str, Any]:
-    with open(path, "r") as f:
+def _load_yaml(path: Path) -> dict[str, Any]:
+    with open(path, "r", encoding="utf-8") as f:
         return yaml.safe_load(f)
 
 
-def parse_llm_config(raw: dict) -> LLMConfig:
+def _parse_llm(raw: dict) -> LLMConfig:
     return LLMConfig(
         provider=raw["provider"],
         model=raw["model"],
@@ -26,43 +58,67 @@ def parse_llm_config(raw: dict) -> LLMConfig:
     )
 
 
-def parse_workflow(raw: dict) -> WorkflowDefinition:
-    steps = []
-    for step_raw in raw.get("steps", []):
-        steps.append(WorkflowStep(
-            name=step_raw["name"],
-            agent_role=step_raw["agent_role"],
-            mode=StepMode(step_raw.get("mode", "sequential")),
-            depends_on=step_raw.get("depends_on", []),
-            condition=step_raw.get("condition"),
-            on_fail=step_raw.get("on_fail"),
-            retry_max=step_raw.get("retry_max", 2),
-            extra_prompt=step_raw.get("extra_prompt", ""),
-        ))
-    return WorkflowDefinition(
-        name=raw["name"],
-        steps=steps,
-        max_qa_cycles=raw.get("max_qa_cycles", 3),
+def _parse_condition(raw: dict | None) -> StepCondition | None:
+    if not raw:
+        return None
+    return StepCondition(
+        artifact=raw["artifact"],
+        operator=raw["operator"],
+        value=raw.get("value"),
     )
 
 
-def load_team_config(team_config_path: str | Path) -> dict[str, Any]:
-    """
-    Returns a dict with:
-    - agents: {role: LLMConfig}
-    - workflow: WorkflowDefinition
-    - settings: dict
-    """
-    raw = load_yaml(team_config_path)
+def _parse_on_fail(raw: dict | None) -> FailPolicy | None:
+    if not raw:
+        return None
+    return FailPolicy(
+        requeue=raw.get("requeue", []),
+        max_cycles=raw.get("max_cycles", 3),
+    )
 
-    agent_configs = {}
-    for role, cfg in raw.get("agents", {}).items():
-        agent_configs[role] = parse_llm_config(cfg["llm"])
 
-    workflow = parse_workflow(raw["workflow"])
+def _parse_workflow(raw: dict) -> WorkflowDefinition:
+    steps = []
+    for s in raw.get("steps", []):
+        steps.append(WorkflowStep(
+            name=s["name"],
+            agent_role=s["agent_role"],
+            mode=StepMode(s.get("mode", "sequential")),
+            depends_on=s.get("depends_on", []),
+            condition=_parse_condition(s.get("condition")),
+            on_fail=_parse_on_fail(s.get("on_fail")),
+            retry_max=s.get("retry_max", 2),
+            context_keys=s.get("context_keys", []),
+        ))
+    return WorkflowDefinition(name=raw["name"], steps=steps)
 
-    return {
-        "agents": agent_configs,
-        "workflow": workflow,
-        "settings": raw.get("settings", {}),
-    }
+
+def load_workflow(name: str) -> WorkflowDefinition:
+    path = WORKFLOWS_DIR / f"{name}.yaml"
+    return _parse_workflow(_load_yaml(path))
+
+
+def load_team(team_name: str) -> TeamDefinition:
+    path = TEAMS_DIR / f"{team_name}.yaml"
+    raw  = _load_yaml(path)
+
+    agents = [
+        AgentDefinition(
+            role=a["role"],
+            profile=a["profile"],
+            llm=_parse_llm(a["llm"]),
+        )
+        for a in raw.get("agents", [])
+    ]
+
+    workflow_ref = raw.get("workflow")
+    if isinstance(workflow_ref, str):
+        workflow = load_workflow(workflow_ref)
+    else:
+        workflow = _parse_workflow(workflow_ref)
+
+    return TeamDefinition(
+        name=raw["team"]["name"],
+        agents=agents,
+        workflow=workflow,
+    )

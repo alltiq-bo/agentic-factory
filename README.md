@@ -1,8 +1,7 @@
 # Agentic Factory
 
 Plataforma reutilizable para orquestar equipos de agentes AI en proyectos de software.
-Define equipos completos por configuración YAML, ejecuta flujos de trabajo colaborativos
-entre agentes especializados y mantiene una base de conocimiento compartida entre ellos.
+Los equipos se definen por configuración YAML — no se modifica código para crear un nuevo equipo.
 
 ---
 
@@ -10,37 +9,35 @@ entre agentes especializados y mantiene una base de conocimiento compartida entr
 
 1. [Visión general](#visión-general)
 2. [Arquitectura del sistema](#arquitectura-del-sistema)
-   - [Flujo principal](#flujo-principal)
-   - [Secuencia de ejecución](#secuencia-de-ejecución)
-   - [Máquina de estados](#máquina-de-estados)
-   - [Modelo de datos](#modelo-de-datos)
-3. [Diseño LLM-agnóstico](#diseño-llm-agnóstico)
-4. [Agentes del equipo](#agentes-del-equipo)
-5. [Flujo de trabajo](#flujo-de-trabajo)
-6. [Estructura del repositorio](#estructura-del-repositorio)
-7. [Configuración de equipos](#configuración-de-equipos)
-8. [Directorio de lineamientos](#directorio-de-lineamientos)
-9. [Inicio rápido](#inicio-rápido)
-10. [Agregar un nuevo proveedor LLM](#agregar-un-nuevo-proveedor-llm)
-11. [Decisiones de arquitectura](#decisiones-de-arquitectura)
+3. [Modelo conceptual](#modelo-conceptual)
+4. [Componentes del MVP](#componentes-del-mvp)
+5. [Flujo de ejecución](#flujo-de-ejecución)
+6. [Retroalimentación de perfiles](#retroalimentación-de-perfiles)
+7. [Estructura del repositorio](#estructura-del-repositorio)
+8. [Configuración de equipos](#configuración-de-equipos)
+9. [Profiles disponibles](#profiles-disponibles)
+10. [Inicio rápido](#inicio-rápido)
+11. [Agregar un nuevo equipo](#agregar-un-nuevo-equipo)
+12. [Agregar un nuevo proveedor LLM](#agregar-un-nuevo-proveedor-llm)
+13. [Decisiones de arquitectura](#decisiones-de-arquitectura)
 
 ---
 
 ## Visión general
 
-**Agentic Factory** orquesta un equipo de agentes AI — cada uno con un rol definido —
-que colaboran para resolver tareas de desarrollo de software de extremo a extremo:
-desde la recepción de un issue en GitHub hasta el PR listo para revisión humana.
+**Agentic Factory** orquesta un equipo de agentes AI — cada uno con un rol y un perfil especializado —
+que colaboran para resolver tareas de desarrollo de software de extremo a extremo.
 
-Principios centrales:
+Principios del MVP:
 
 | Principio | Descripción |
 |-----------|-------------|
-| **LLM-agnóstico** | Anthropic, OpenAI, Ollama y Gemini son intercambiables por config. Agregar un proveedor nuevo no toca código existente. |
-| **Config-driven** | El equipo, los modelos, el flujo y las políticas de reintento se definen en YAML. |
-| **Un container por agente** | Cada rol corre en su propio Docker container — aislamiento, escalabilidad independiente y distintas dependencias por perfil. |
-| **Base de conocimiento compartida** | Los artefactos producidos por cada agente son accesibles por los siguientes. No hay transfer manual de contexto. |
-| **Lineamientos vivos** | `guidelines/` es retroalimentado automáticamente por el orquestador con ADRs, estándares y decisiones tomadas por los agentes. |
+| **Config-driven** | Equipos, perfiles, LLMs y flujos definidos en YAML. Cero código para un equipo nuevo. |
+| **LLM-agnóstico** | Anthropic, OpenAI, Ollama y Gemini son intercambiables por config. |
+| **Profile separado del Role** | El rol define el comportamiento; el profile define el dominio de conocimiento. Un mismo rol puede tener distintos profiles entre equipos. |
+| **ContextBuilder explícito** | Cada agente recibe exactamente los artefactos que necesita — no el diccionario completo. |
+| **KB en dos capas** | Conocimiento permanente del proyecto separado de artefactos generados por tarea. |
+| **Perfiles vivos** | QA etiqueta issues por profile responsable. Las sugerencias se acumulan para revisión humana. |
 
 ---
 
@@ -50,55 +47,51 @@ Principios centrales:
 
 ```mermaid
 flowchart TD
-    GH["🐙 GITHUB\nIssues / PR / Code"]
+    GH["🐙 GitHub Issue"]
 
-    subgraph ORCH["ORCHESTRATOR"]
-        WF["Workflow Engine"]
-        RT["Task Router"]
-        ST["State Manager"]
-        WF <--> RT
-        RT <--> ST
+    subgraph API["POST /tasks"]
+        EP["FastAPI Endpoint"]
     end
 
-    subgraph AGENTS["AGENT TEAM  (Docker containers)"]
-        AN["🔍 Analyst\nRequirements & User Stories"]
-        AR["🏛️ Architect\nSystem Design & ADRs"]
-
-        subgraph DEV["Developers"]
-            BE["⚙️ Backend Agent\nAPIs · Services · DB"]
-            FE["🎨 Frontend Agent\nUI · Components · UX"]
-        end
-
-        QA["🧪 QA Agent\nTest Plan · Validation"]
+    subgraph ORCH["Orchestrator"]
+        SM["StateManager\n(dónde está cada tarea)"]
+        CB["ContextBuilder\n(qué recibe cada agente)"]
+        WE["WorkflowEngine\n(orden, paralelismo, requeue)"]
     end
 
-    KB[("📚 Knowledge Base\nArtifacts · Decisions\nContext · History")]
+    subgraph KB["Knowledge Base"]
+        PK["Project Knowledge\nADRs · Standards · Profiles"]
+        TA["Task Artifacts\nper task · per cycle"]
+    end
+
+    subgraph TEAM["Agent Team (Docker containers)"]
+        AN["Analyst\nrole + profile: software_analysis"]
+        AR["Architect\nrole + profile: software_architecture"]
+        BE["Backend Dev\nrole + profile: dotnet8"]
+        FE["Frontend Dev\nrole + profile: react"]
+        QA["QA\nrole + profile: software_qa"]
+    end
 
     DONE["✅ DONE"]
-    RETRY["🔁 Back to Developer"]
+    FIX["🔁 Fix Cycle\n(requeue config-driven)"]
 
-    GH -->|"new issue / task"| ORCH
-    ORCH -->|"analyze requirements"| AN
-    AN -->|"user stories + scope"| AR
-    AR -->|"architecture + tech decisions"| DEV
-    AR -.->|"read/write"| KB
-    AN -.->|"read/write"| KB
-    BE -.->|"read/write"| KB
-    FE -.->|"read/write"| KB
-    QA -.->|"read/write"| KB
-    BE -->|"implementation"| QA
-    FE -->|"implementation"| QA
-    QA -->|"PASS ✅"| DONE
-    QA -->|"FAIL ❌"| RETRY
-    RETRY -->|"fix cycle"| DEV
-    DONE -->|"merge / close issue"| GH
+    GH -->|"issue text"| EP
+    EP --> SM
+    SM --> CB
+    CB -->|"role + profile + artifacts"| WE
+    WE --> AN --> AR
+    AR --> BE & FE
+    BE & FE --> QA
+    QA -->|"PASS"| DONE
+    QA -->|"FAIL → on_fail.requeue"| FIX
+    FIX --> BE & FE
+    AN & AR & BE & FE & QA -.->|"write"| TA
+    CB -.->|"read"| TA
+    CB -.->|"read"| PK
 
     style ORCH fill:#1e3a5f,color:#fff,stroke:#4a9eff
-    style AGENTS fill:#1a3a2a,color:#fff,stroke:#4aff9e
+    style TEAM fill:#1a3a2a,color:#fff,stroke:#4aff9e
     style KB fill:#3a1a3a,color:#fff,stroke:#ff4aff
-    style DONE fill:#1a3a1a,color:#fff,stroke:#4aff4a
-    style RETRY fill:#3a1a1a,color:#fff,stroke:#ff4a4a
-    style GH fill:#24292e,color:#fff,stroke:#6e7681
 ```
 
 ### Secuencia de ejecución
@@ -106,55 +99,63 @@ flowchart TD
 ```mermaid
 sequenceDiagram
     actor User
-    participant GH as GitHub
+    participant API as POST /tasks
     participant ORC as Orchestrator
+    participant SM as StateManager
+    participant CB as ContextBuilder
     participant KB as Knowledge Base
     participant AN as Analyst
     participant AR as Architect
-    participant BE as Backend Agent
-    participant FE as Frontend Agent
+    participant BE as Backend Dev
+    participant FE as Frontend Dev
     participant QA as QA Agent
 
-    User->>GH: Create Issue / Feature Request
-    GH->>ORC: Webhook trigger (new task)
-    ORC->>KB: Initialize task context
+    User->>API: POST /tasks { input }
+    API->>ORC: run_task(input)
+    ORC->>SM: create(status: CREATED)
+    ORC->>KB: load_project_knowledge()
 
-    ORC->>AN: dispatch(task: analyze)
-    AN->>KB: read(project_context)
-    AN->>KB: write(user_stories, acceptance_criteria)
-    AN-->>ORC: done(artifacts: user_stories)
+    ORC->>SM: transition(ANALYZING)
+    ORC->>CB: build(analyst, step, context)
+    CB->>KB: read project_knowledge
+    CB-->>ORC: messages[system=role+profile, user=input]
+    ORC->>AN: run(messages)
+    AN-->>ORC: AgentResult{artifacts: user_stories, ...}
+    ORC->>KB: write_artifacts(analyst, artifacts)
 
-    ORC->>AR: dispatch(task: design)
-    AR->>KB: read(user_stories, project_context)
-    AR->>KB: write(ADR, system_design, API_contracts)
-    AR-->>ORC: done(artifacts: architecture)
+    ORC->>SM: transition(DESIGNING)
+    ORC->>CB: build(architect, step, context)
+    CB->>KB: read(user_stories, acceptance_criteria)
+    ORC->>AR: run(messages)
+    AR-->>ORC: AgentResult{artifacts: api_contracts, adrs, ...}
+    ORC->>KB: write_artifacts(architect, artifacts)
 
-    par Backend development
-        ORC->>BE: dispatch(task: implement_backend)
-        BE->>KB: read(API_contracts, ADR)
-        BE->>KB: write(code_artifacts, endpoints)
-        BE-->>ORC: done(artifacts: backend)
-    and Frontend development
-        ORC->>FE: dispatch(task: implement_frontend)
-        FE->>KB: read(system_design, API_contracts)
-        FE->>KB: write(code_artifacts, components)
-        FE-->>ORC: done(artifacts: frontend)
+    ORC->>SM: transition(DEVELOPING)
+    par
+        ORC->>CB: build(backend_developer, step, context)
+        ORC->>BE: run(messages)
+        BE-->>ORC: AgentResult{artifacts: backend_output}
+    and
+        ORC->>CB: build(frontend_developer, step, context)
+        ORC->>FE: run(messages)
+        FE-->>ORC: AgentResult{artifacts: frontend_output}
     end
+    ORC->>KB: write_artifacts(backend+frontend)
 
-    ORC->>QA: dispatch(task: validate)
-    QA->>KB: read(all_artifacts)
-    QA->>KB: write(test_plan, test_results)
+    ORC->>SM: transition(VALIDATING)
+    ORC->>CB: build(qa, step, context)
+    CB->>KB: read(all step context_keys)
+    ORC->>QA: run(messages)
+    QA-->>ORC: AgentResult{qa_passed: true/false, qa_issues, qa_profile_suggestions}
 
     alt PASS
-        QA-->>ORC: result(status: pass)
-        ORC->>GH: create PR / close issue
-        GH-->>User: Notify completion
+        ORC->>SM: transition(DONE)
+        ORC->>KB: write profile suggestions
     else FAIL
-        QA-->>ORC: result(status: fail, issues: [...])
-        ORC->>KB: write(qa_feedback)
-        ORC->>BE: dispatch(task: fix, feedback: qa_issues)
-        ORC->>FE: dispatch(task: fix, feedback: qa_issues)
-        Note over ORC,QA: Re-enters QA validation loop
+        ORC->>SM: transition(FIX_CYCLE)
+        ORC->>KB: write(qa_issues, qa_output)
+        Note over ORC: requeue: [implement_backend, implement_frontend]
+        Note over ORC: Developers re-run with qa_issues in context
     end
 ```
 
@@ -162,256 +163,217 @@ sequenceDiagram
 
 ```mermaid
 stateDiagram-v2
-    [*] --> CREATED : GitHub Issue / Manual trigger
+    [*] --> CREATED : POST /tasks
 
-    CREATED --> ANALYZING : Orchestrator dispatches to Analyst
-    ANALYZING --> DESIGNING : Analyst completes (user_stories ready)
-    ANALYZING --> FAILED : Analyst error / timeout
-
-    DESIGNING --> DEVELOPING : Architect completes (ADR + design ready)
-    DESIGNING --> ANALYZING : Needs more requirements
-    DESIGNING --> FAILED : Architect error / timeout
-
-    DEVELOPING --> VALIDATING : Backend + Frontend complete
-    DEVELOPING --> FAILED : Dev error / timeout
+    CREATED    --> ANALYZING  : Analyst dispatched
+    ANALYZING  --> DESIGNING  : Analyst done
+    DESIGNING  --> DEVELOPING : Architect done
+    DEVELOPING --> VALIDATING : Backend + Frontend done
 
     state DEVELOPING {
         [*] --> BACKEND_IN_PROGRESS
         [*] --> FRONTEND_IN_PROGRESS
-        BACKEND_IN_PROGRESS --> BACKEND_DONE
+        BACKEND_IN_PROGRESS  --> BACKEND_DONE
         FRONTEND_IN_PROGRESS --> FRONTEND_DONE
-        BACKEND_DONE --> [*]
+        BACKEND_DONE  --> [*]
         FRONTEND_DONE --> [*]
     }
 
-    VALIDATING --> DONE : QA PASS ✅
-    VALIDATING --> FIX_CYCLE : QA FAIL ❌
+    VALIDATING --> DONE       : QA PASS ✅
+    VALIDATING --> FIX_CYCLE  : QA FAIL ❌
 
-    FIX_CYCLE --> DEVELOPING : Developers apply QA feedback
-    FIX_CYCLE --> FAILED : Max retries exceeded
+    FIX_CYCLE  --> DEVELOPING : Requeue developers
+    FIX_CYCLE  --> ESCALATED  : max_cycles exceeded
 
-    DONE --> [*] : PR merged / Issue closed
-    FAILED --> [*] : Alert + human escalation
+    DONE       --> [*] : task complete
+    FAILED     --> [*] : agent error — escalate
+    ESCALATED  --> [*] : human review required
+
+    ANALYZING  --> FAILED : agent error
+    DESIGNING  --> FAILED : agent error
+    DEVELOPING --> FAILED : agent error
 ```
 
-### Modelo de datos
+### Modelo de datos (Knowledge Base)
 
 ```mermaid
 erDiagram
     PROJECT {
-        uuid id PK
+        uuid   id PK
         string name
-        string description
         string github_repo
-        timestamp created_at
     }
 
     TASK {
-        uuid id PK
-        uuid project_id FK
-        string github_issue_ref
-        string title
+        uuid   id PK
+        uuid   project_id FK
         string status
-        int retry_count
-        timestamp created_at
-        timestamp updated_at
+        string current_step
+        int    qa_cycle
+        string workflow_name
     }
 
     ARTIFACT {
-        uuid id PK
-        uuid task_id FK
+        uuid   id PK
+        uuid   task_id FK
         string agent_role
-        string artifact_type
-        jsonb content
-        string version
-        timestamp created_at
+        string key
+        jsonb  value
+        int    qa_cycle
     }
 
-    AGENT_PROFILE {
-        uuid id PK
+    AGENT_DEFINITION {
         string role
-        string model
-        string system_prompt
-        jsonb tools
-        string docker_image
+        string profile
+        string llm_provider
+        string llm_model
     }
 
     TEAM_CONFIG {
-        uuid id PK
-        uuid project_id FK
         string name
-        jsonb agent_roles
-        jsonb workflow_definition
+        string workflow_ref
     }
 
-    MESSAGE {
-        uuid id PK
-        uuid task_id FK
-        string from_agent
-        string to_agent
-        string channel
-        jsonb payload
-        timestamp sent_at
+    PROFILE {
+        string name PK
+        text   content
+        text   suggestions
     }
 
-    QA_RESULT {
-        uuid id PK
-        uuid task_id FK
-        string status
-        jsonb issues_found
-        jsonb test_plan
-        int cycle_number
-        timestamp evaluated_at
-    }
-
-    PROJECT ||--o{ TASK : "has"
-    PROJECT ||--o{ TEAM_CONFIG : "uses"
-    TASK ||--o{ ARTIFACT : "produces"
-    TASK ||--o{ MESSAGE : "generates"
-    TASK ||--o{ QA_RESULT : "evaluated_by"
-    AGENT_PROFILE ||--o{ ARTIFACT : "creates"
-    TEAM_CONFIG ||--o{ AGENT_PROFILE : "includes"
+    PROJECT     ||--o{ TASK            : "has"
+    TASK        ||--o{ ARTIFACT        : "produces"
+    TEAM_CONFIG ||--o{ AGENT_DEFINITION : "includes"
+    AGENT_DEFINITION }o--|| PROFILE    : "uses"
 ```
 
 ---
 
-## Diseño LLM-agnóstico
-
-Ningún agente conoce qué proveedor LLM está usando. El proveedor es una decisión
-de configuración, no de código.
+## Modelo conceptual
 
 ```
-orchestrator/llm/
-├── base.py              ← LLMProvider (ABC): complete() + stream()
-├── factory.py           ← build(config) + @register decorator
-├── anthropic_adapter.py ← Claude (claude-sonnet-4-6, claude-opus-4-6, ...)
-├── openai_adapter.py    ← GPT (gpt-4o, gpt-4o-mini, ...)
-├── ollama_adapter.py    ← Local (llama3.1, codestral, mistral, ...)
-└── gemini_adapter.py    ← Google (gemini-1.5-pro, gemini-flash, ...)
+Agent
+ ├── Role        → define el comportamiento y output esperado
+ ├── Profile     → conocimiento especializado del dominio (archivo .md externo)
+ └── LLM         → proveedor + modelo que ejecuta el razonamiento
+
+Team
+ ├── Agents[]    → lista de (Role + Profile + LLM)
+ └── Workflow    → referencia a un workflow reutilizable
+
+Workflow
+ ├── Steps[]     → agent_role + mode (sequential|parallel)
+ ├── Dependencies → depends_on[] por step (grafo DAG)
+ ├── Conditions  → vocabulario cerrado: eq | neq | contains | is_set
+ └── Policies    → retry_max por step + on_fail.requeue + on_fail.max_cycles
+
+ContextBuilder
+ └── Por cada step: role_instructions + profile_content + filtered_artifacts
+
+StateManager
+ └── TaskState por task_id: status + current_step + qa_cycle
+
+Knowledge Base
+ ├── Project Knowledge  → guidelines/, profiles/ (permanente, por proyecto)
+ └── Task Artifacts     → Redis (efímero, por tarea y ciclo QA)
 ```
 
-Cambiar el LLM de un agente es editar una línea en el YAML del equipo:
+**Relación Role → Profile:**
 
-```yaml
-agents:
-  backend_dev:
-    llm:
-      provider: ollama        # ← era anthropic, ahora es local
-      model: codestral:22b
-```
-
-Variables de entorno requeridas por proveedor:
-
-| Proveedor | Variable |
-|-----------|----------|
-| `anthropic` | `ANTHROPIC_API_KEY` |
-| `openai` | `OPENAI_API_KEY` |
-| `gemini` | `GOOGLE_API_KEY` |
-| `ollama` | `OLLAMA_BASE_URL` (default: `http://ollama:11434`) |
+El mismo `role: backend_developer` puede tener `profile: dotnet8` en un equipo
+y `profile: java21` en otro. El agente base es el mismo; lo que cambia es el
+conocimiento especializado inyectado por el ContextBuilder.
 
 ---
 
-## Agentes del equipo
+## Componentes del MVP
 
-Cada agente corre en su propio Docker container, hereda de `agents/base/agent.py`
-y solo define su `system_prompt` y cómo parsear su output al Knowledge Base.
-
-### Analyst
-
-**Rol:** Descompone requerimientos en historias de usuario estructuradas.
-
-**Artefactos producidos al KB:**
-
-| Clave | Descripción |
-|-------|-------------|
-| `problem_statement` | Descripción precisa del problema |
-| `functional_requirements` | Lista numerada de requerimientos |
-| `user_stories` | Formato: "As a [role], I want [feature] so that [benefit]" |
-| `acceptance_criteria` | Given/When/Then por historia |
-| `out_of_scope` | Qué NO se construye |
-| `assumptions` | Supuestos ante ambigüedad |
+| Componente | Archivo | Responsabilidad |
+|---|---|---|
+| **Orchestrator** | `orchestrator/orchestrator.py` | Coordinador central. Carga team, construye contexto, ejecuta engine, actualiza estado |
+| **WorkflowEngine** | `orchestrator/core/workflow_engine.py` | Ejecuta grafo de steps. Domain-agnóstico — no conoce roles específicos |
+| **ContextBuilder** | `orchestrator/core/context_builder.py` | Construye `list[Message]` para cada agente: role + profile + artifacts filtrados |
+| **StateManager** | `orchestrator/core/state_manager.py` | Persistencia de `TaskState`. Redis o in-memory |
+| **ProfileLoader** | `orchestrator/core/profile_loader.py` | Carga `profiles/*.md`. Cache con `lru_cache`. Escribe `.suggestions.md` |
+| **ConfigLoader** | `orchestrator/core/config_loader.py` | Parsea YAML de teams y workflows a domain models |
+| **LLM Adapters** | `orchestrator/llm/` | Anthropic, OpenAI, Ollama, Gemini. Contrato: `complete()` + `stream()` |
+| **BaseAgent** | `agents/base/agent.py` | LLM caller + output parser. Recibe messages pre-construidos |
+| **Role Agents** | `agents/*/agent.py` | Solo definen `ROLE_INSTRUCTIONS` y `_parse_output()` |
+| **KnowledgeBase** | `knowledge_base/store.py` | Dos capas: `load_project_knowledge()` + `write/read_artifacts()` |
+| **API** | `orchestrator/api/main.py` | FastAPI: `POST /tasks`, `GET /tasks/{id}`, `GET /health` |
 
 ---
 
-### Architect
-
-**Rol:** Diseño del sistema y registro de decisiones técnicas (ADRs).
-
-**Artefactos producidos al KB:**
-
-| Clave | Descripción |
-|-------|-------------|
-| `system_architecture` | Componentes, responsabilidades y límites |
-| `technology_stack` | Stack elegido con justificación |
-| `api_contracts` | Endpoints y schemas request/response |
-| `data_model` | Entidades y relaciones |
-| `adrs` | Architecture Decision Records numerados |
-| `non_functional_requirements` | Escalabilidad, seguridad, observabilidad |
-| `risks_and_mitigations` | Riesgos técnicos y cómo mitigarlos |
-
----
-
-### Backend Developer
-
-**Rol:** Implementación de APIs, servicios y capa de datos.
-
-**Lee del KB:** `system_architecture`, `api_contracts`, `data_model`
-
-**Produce:** `backend_core_code`, `backend_database_schema`, `backend_test_stubs`, `backend_docker_setup`
-
----
-
-### Frontend Developer
-
-**Rol:** Implementación de UI, componentes y capa de integración con el backend.
-
-**Lee del KB:** `system_architecture`, `api_contracts`, `component_tree`
-
-**Produce:** `frontend_core_components`, `frontend_api_integration`, `frontend_state_management`, `frontend_routing`, `frontend_test_stubs`
-
----
-
-### QA Agent
-
-**Rol:** Valida la implementación contra los criterios de aceptación. Emite veredicto PASS/FAIL.
-
-**Lee del KB:** todos los artefactos anteriores.
-
-**Produce:** `qa_test_plan`, `qa_test_cases`, `qa_issues_found`, `qa_verdict`, `qa_status`
-
-**Regla de veredicto:**
-
-| Condición | Veredicto |
-|-----------|-----------|
-| Sin issues críticos ni altos | `PASS` |
-| Al menos 1 issue crítico | `FAIL` |
-| Al menos 1 issue alto sin mitigación | `FAIL` |
-| Solo issues medios/bajos | `PASS` (con notas) |
-
----
-
-## Flujo de trabajo
-
-El workflow `software_development` ejecuta los pasos en este orden:
+## Flujo de ejecución
 
 ```
-[1] analyze_requirements   ← Analyst       (sequential)
-[2] design_architecture    ← Architect     (sequential, depende de [1])
-[3a] implement_backend     ← Backend Dev   (parallel ┐
-[3b] implement_frontend    ← Frontend Dev  (parallel ┘  ambos dependen de [2])
-[4] validate               ← QA            (sequential, depende de [3a] y [3b])
-     │
-     ├── PASS → workflow done
-     └── FAIL → vuelve a [3] (máx. `max_qa_cycles` veces)
+POST /tasks { "input": "...", "project_id": "..." }
+  │
+  ├─► Orchestrator.run_task()
+  │     ├─► StateManager.create(CREATED)
+  │     ├─► KnowledgeBase.load_project_knowledge()
+  │     └─► WorkflowEngine.execute(workflow, context)
+  │           │
+  │           ├─[step: analyze_requirements]──────────────────────────────┐
+  │           │   ContextBuilder.build(analyst, step, context)            │
+  │           │     system = ROLE_INSTRUCTIONS + profile/software_analysis │
+  │           │     user   = task_input + project_knowledge               │
+  │           │   AnalystAgent.run(messages) → artifacts → KB             │
+  │           │                                                           │
+  │           ├─[step: design_architecture]──────────────────────────────┤
+  │           │   ContextBuilder filtra: user_stories, acceptance_criteria │
+  │           │   ArchitectAgent.run(messages) → api_contracts, adrs → KB │
+  │           │                                                           │
+  │           ├─[parallel: implement_backend + implement_frontend]────────┤
+  │           │   Cada uno recibe solo sus context_keys del workflow YAML  │
+  │           │   backend_developer recibe: api_contracts + data_model     │
+  │           │   frontend_developer recibe: api_contracts + component_tree│
+  │           │                                                           │
+  │           └─[step: validate]──────────────────────────────────────────┘
+  │               QAAgent recibe todos los outputs previos
+  │               qa_passed = True  → WorkflowRun.status = done
+  │               qa_passed = False → on_fail.requeue triggers
+  │                 → implement_backend y implement_frontend re-encolados
+  │                 → context.task_artifacts ya tiene qa_issues y qa_output
+  │                 → ciclo 2 comienza con feedback explícito
+  │
+  └─► StateManager.transition(DONE | FAILED | ESCALATED)
+      Orchestrator._flush_profile_suggestions()
+        → profiles/*.suggestions.md actualizado
 ```
 
-**Políticas configurables:**
+---
 
-| Parámetro | Descripción | Default |
-|-----------|-------------|---------|
-| `max_qa_cycles` | Ciclos máximos de fix antes de escalar | `3` |
-| `retry_max` | Reintentos por agente ante fallo técnico | `2` |
-| `temperature` | Por agente en el YAML del equipo | variable |
+## Retroalimentación de perfiles
+
+Los perfiles mejoran con el uso. El mecanismo tiene tres partes:
+
+### 1 — QA etiqueta issues por profile responsable
+
+```
+## Issues Found
+- [HIGH] Missing migration Down() method | agent: backend_developer | profile: dotnet8
+- [MEDIUM] Button not keyboard accessible | agent: frontend_developer | profile: react
+
+## Profile Improvement Suggestions
+- profile: dotnet8 | section: Entity Framework Core Standards | suggestion: Require Down() in every migration
+- profile: react | section: Accessibility Standards | suggestion: All buttons must have explicit type attribute
+```
+
+### 2 — El Orchestrator escribe las sugerencias automáticamente
+
+Al finalizar cada tarea (PASS o ESCALATED), el Orchestrator llama a `ProfileLoader.append_suggestion()`.
+Las sugerencias se acumulan en `profiles/<name>.suggestions.md`.
+
+### 3 — Revisión humana y merge al profile activo
+
+```
+profiles/
+├── dotnet8.md                  ← profile activo (leído por ContextBuilder)
+└── dotnet8.suggestions.md      ← sugerencias pendientes de aprobación
+```
+
+Cuando una sugerencia se aprueba, se copia al profile activo.
+La próxima tarea que use ese profile ya se beneficia del conocimiento nuevo.
 
 ---
 
@@ -420,56 +382,61 @@ El workflow `software_development` ejecuta los pasos en este orden:
 ```
 agentic_factory/
 │
-├── orchestrator/                   # Motor de orquestación
+├── orchestrator/
+│   ├── __init__.py
+│   ├── orchestrator.py             # Coordinador central
 │   ├── Dockerfile
 │   ├── llm/
-│   │   ├── base.py                 # Contrato LLMProvider (ABC)
-│   │   ├── factory.py              # Registry + build()
+│   │   ├── base.py                 # LLMProvider ABC: complete() + stream()
+│   │   ├── factory.py              # @register + build(config)
 │   │   ├── anthropic_adapter.py
 │   │   ├── openai_adapter.py
 │   │   ├── ollama_adapter.py
 │   │   └── gemini_adapter.py
 │   ├── core/
-│   │   ├── workflow_engine.py      # Ejecución de pasos, ciclo QA/fix
-│   │   ├── config_loader.py        # Lee YAML → objetos de runtime
-│   │   └── state_manager.py        # Estado de tareas (Redis / in-memory)
+│   │   ├── models.py               # Domain models: Agent, Team, Workflow, Task...
+│   │   ├── context_builder.py      # Construye messages para cada agente
+│   │   ├── workflow_engine.py      # Ejecuta DAG de steps — domain-agnóstico
+│   │   ├── state_manager.py        # Persiste TaskState (Redis / in-memory)
+│   │   ├── config_loader.py        # YAML → domain models
+│   │   └── profile_loader.py       # Carga profiles/*.md + escribe suggestions
 │   └── api/
-│       └── main.py                 # FastAPI — POST /tasks, GET /tasks/{id}
+│       └── main.py                 # FastAPI: POST /tasks, GET /tasks/{id}
 │
 ├── agents/
 │   ├── base/
-│   │   ├── Dockerfile.base         # Imagen base compartida por todos los agentes
-│   │   └── agent.py                # BaseAgent: LLM call, KB read/write, retry
-│   ├── analyst/
-│   │   ├── Dockerfile
-│   │   └── agent.py
-│   ├── architect/
-│   │   ├── Dockerfile
-│   │   └── agent.py
-│   ├── backend_dev/
-│   │   ├── Dockerfile
-│   │   └── agent.py
-│   ├── frontend_dev/
-│   │   ├── Dockerfile
-│   │   └── agent.py
-│   └── qa/
-│       ├── Dockerfile
-│       └── agent.py
+│   │   ├── agent.py                # BaseAgent: run(messages) → AgentResult
+│   │   └── Dockerfile.base
+│   ├── analyst/agent.py            # ROLE_INSTRUCTIONS + _parse_output
+│   ├── architect/agent.py
+│   ├── backend_dev/agent.py
+│   ├── frontend_dev/agent.py
+│   └── qa/agent.py                 # + profile suggestion extraction
 │
-├── knowledge_base/                 # Interfaz al KB compartido
+├── profiles/                       # Conocimiento especializado (archivos .md)
+│   ├── software_analysis.md
+│   ├── software_architecture.md
+│   ├── dotnet8.md
+│   ├── react.md
+│   └── software_qa.md
 │
-├── teams/                          # Configuraciones de equipos
-│   ├── default_team.yaml           # Equipo con Anthropic Claude
-│   └── local_llm_team.yaml         # Equipo 100% local con Ollama
+├── knowledge_base/
+│   └── store.py                    # load_project_knowledge() + write/read_artifacts()
 │
-├── guidelines/                     # Lineamientos vivos (ver sección dedicada)
-│   ├── README.md
-│   ├── decisions/                  # ADRs generados por el Architect Agent
-│   ├── standards/                  # Estándares de código y diseño
-│   ├── workflows/                  # Reglas de flujos de trabajo
-│   └── agents/                     # Personas y contratos por agente
+├── workflows/
+│   └── software_development.yaml   # Workflow reutilizable entre equipos
 │
-├── architecture/                   # Diagramas Mermaid del sistema
+├── teams/
+│   ├── dotnet-react-migration.yaml # Caso inicial: .NET MVC 5 → .NET 8 + React
+│   └── default_team.yaml
+│
+├── guidelines/                     # Lineamientos vivos del proyecto
+│   ├── decisions/                  # ADRs
+│   ├── standards/
+│   ├── workflows/
+│   └── agents/
+│
+├── architecture/                   # Diagramas Mermaid
 │   ├── 01_workflow_main.mmd
 │   ├── 02_sequence_task.mmd
 │   ├── 03_deployment_docker.mmd
@@ -477,137 +444,166 @@ agentic_factory/
 │   └── 05_knowledge_base.mmd
 │
 ├── docker-compose.yml
-└── requirements.txt
+├── requirements.txt
+└── .env.example
 ```
 
 ---
 
 ## Configuración de equipos
 
-Los equipos se definen en `teams/*.yaml`. El orquestador los carga en runtime.
+### Schema del team YAML
 
 ```yaml
-# teams/default_team.yaml
-name: default_team
-
-settings:
-  max_qa_cycles: 3
+team:
+  name: my-team-name
+  description: Optional description
 
 agents:
-  analyst:
+  - role: analyst                   # Debe coincidir con AGENT_REGISTRY en orchestrator.py
+    profile: software_analysis      # Nombre del archivo en profiles/<name>.md
     llm:
-      provider: anthropic
+      provider: anthropic           # anthropic | openai | ollama | gemini
       model: claude-sonnet-4-6
       temperature: 0.4
       max_tokens: 4096
 
-  backend_dev:
+  - role: backend_developer
+    profile: dotnet8                # Perfil especializado para este equipo
     llm:
       provider: anthropic
       model: claude-sonnet-4-6
-      temperature: 0.2    # más bajo = código más determinista
+      temperature: 0.2
 
-workflow:
-  name: software_development
-  steps:
-    - name: analyze_requirements
-      agent_role: analyst
-      mode: sequential
-      depends_on: []
-
-    - name: implement_backend
-      agent_role: backend_dev
-      mode: parallel
-      depends_on: [design_architecture]
-
-    - name: validate
-      agent_role: qa
-      mode: sequential
-      depends_on: [implement_backend, implement_frontend]
-      on_fail: implement_backend
+workflow: software_development      # Referencia a workflows/<name>.yaml
 ```
 
-Para usar el equipo local sin API keys:
+### Schema del workflow YAML
 
-```bash
-TEAM_CONFIG=teams/local_llm_team.yaml docker compose --profile local_llm up
+```yaml
+name: software_development
+
+steps:
+  - name: analyze_requirements
+    agent_role: analyst
+    mode: sequential                # sequential | parallel
+    depends_on: []
+    retry_max: 2
+    context_keys: []                # [] = solo input + project_knowledge
+
+  - name: validate
+    agent_role: qa
+    mode: sequential
+    depends_on: [implement_backend, implement_frontend]
+    context_keys:
+      - user_stories
+      - backend_output
+      - frontend_output
+      - qa_output                   # ciclo anterior si aplica
+    on_fail:
+      requeue: [implement_backend, implement_frontend]
+      max_cycles: 3
 ```
 
 ---
 
-## Directorio de lineamientos
+## Profiles disponibles
 
-`guidelines/` es un directorio **vivo** — el orquestador lo retroalimenta
-automáticamente al final de cada ciclo de workflow.
+| Profile | Archivo | Uso |
+|---------|---------|-----|
+| `software_analysis` | `profiles/software_analysis.md` | Analyst en cualquier equipo |
+| `software_architecture` | `profiles/software_architecture.md` | Architect en cualquier equipo |
+| `dotnet8` | `profiles/dotnet8.md` | Backend Developer .NET 8 + EF Core + ASP.NET Core |
+| `react` | `profiles/react.md` | Frontend Developer React 18 + TypeScript + Vite |
+| `software_qa` | `profiles/software_qa.md` | QA en cualquier equipo |
 
-```
-guidelines/
-├── decisions/           # ADR-001, ADR-002, ... — generados por el Architect Agent
-├── standards/           # llm_agnostic.md, coding_standards.md, ...
-├── workflows/           # software_development.md — reglas y comportamiento del flujo
-└── agents/              # analyst.md, architect.md, qa.md — personas y contratos
-```
-
-**Qué se persiste automáticamente:**
-- ADRs extraídos de los artefactos del Architect Agent
-- Veredictos y issues encontrados por el QA Agent en cada ciclo
-- Decisiones de configuración que afectaron el resultado del workflow
-
-**Para qué sirve en futuras sesiones:**
-- Contexto inmediato sin releer el código
-- Entrada para el siguiente ciclo (el Analyst puede leer ADRs previos)
-- Revisión humana del razonamiento de los agentes
-- Base para configurar nuevos proyectos reutilizando decisiones anteriores
+Para crear un nuevo profile: agregar `profiles/<nombre>.md` con el conocimiento especializado.
+No se modifica ningún archivo de código.
 
 ---
 
 ## Inicio rápido
 
-### Requisitos
-- Docker + Docker Compose v2
-- Al menos una API key (o Ollama para modo local)
-
 ### 1. Variables de entorno
 
 ```bash
 cp .env.example .env
-# Editar .env con tus API keys
-```
-
-```env
-ANTHROPIC_API_KEY=sk-ant-...
-OPENAI_API_KEY=sk-...          # opcional
-GOOGLE_API_KEY=...             # opcional
-TEAM_CONFIG=teams/default_team.yaml
-LOG_LEVEL=INFO
+# Editar .env con tu API key
 ```
 
 ### 2. Levantar el stack
 
 ```bash
-# Equipo con APIs cloud
+# Con APIs cloud (Anthropic por defecto)
 docker compose up
 
-# Equipo 100% local (requiere GPU)
+# Con Ollama local (requiere GPU)
 docker compose --profile local_llm up
 ```
 
-### 3. Enviar una tarea
+### 3. Enviar una tarea (async)
 
 ```bash
 curl -X POST http://localhost:8000/tasks \
   -H "Content-Type: application/json" \
   -d '{
-    "project_id": "my-project",
-    "input": "Build a REST API for user authentication with JWT tokens"
+    "project_id": "migration-001",
+    "input": "Migrate the user authentication module from .NET MVC 5 to .NET 8 + React"
   }'
+# → { "task_id": "...", "status": "created" }
 ```
 
-### 4. Consultar el estado
+### 4. Consultar estado
 
 ```bash
 curl http://localhost:8000/tasks/{task_id}
+# → { "status": "validating", "current_step": "validate", "qa_cycle": 1 }
 ```
+
+### 5. Ejecutar de forma síncrona (dev/testing)
+
+```bash
+curl -X POST http://localhost:8000/tasks/sync \
+  -H "Content-Type: application/json" \
+  -d '{ "input": "Build user auth with JWT for the migration project" }'
+# → Espera a que termine y retorna el resultado completo
+```
+
+---
+
+## Agregar un nuevo equipo
+
+**Sin tocar código.** Solo agregar archivos:
+
+1. Crear los profiles que no existan en `profiles/`:
+   ```
+   profiles/java21.md
+   profiles/angular.md
+   ```
+
+2. Crear el team YAML:
+   ```yaml
+   # teams/java-angular.yaml
+   team:
+     name: java-angular
+
+   agents:
+     - role: backend_developer
+       profile: java21
+       llm: { provider: anthropic, model: claude-sonnet-4-6, temperature: 0.2 }
+
+     - role: frontend_developer
+       profile: angular
+       llm: { provider: anthropic, model: claude-sonnet-4-6, temperature: 0.2 }
+     # ... resto de agentes
+
+   workflow: software_development   # mismo workflow
+   ```
+
+3. Iniciar con el nuevo equipo:
+   ```bash
+   TEAM_CONFIG=java-angular docker compose up
+   ```
 
 ---
 
@@ -619,46 +615,31 @@ curl http://localhost:8000/tasks/{task_id}
 from .base import LLMConfig, LLMProvider, LLMResponse, Message
 from .factory import register
 
-@register("mi_proveedor")            # nombre usado en el YAML
+@register("mi_proveedor")
 class MiProveedorLLM(LLMProvider):
-
     async def complete(self, messages: list[Message]) -> LLMResponse:
-        # llamar al SDK del proveedor
-        ...
+        # llamar SDK
         return LLMResponse(content=..., provider="mi_proveedor", model=self.config.model)
 
     async def stream(self, messages: list[Message]):
-        # yield chunks
-        ...
+        yield "..."
 ```
 
-2. Importarlo en `factory.py` → `_load_adapters()`:
+2. Importarlo en `factory.py` → `_load_adapters()`.
 
-```python
-from . import mi_proveedor_adapter  # noqa: F401
-```
-
-3. Usarlo en cualquier equipo sin cambiar nada más:
-
-```yaml
-agents:
-  analyst:
-    llm:
-      provider: mi_proveedor
-      model: mi-modelo-v1
-```
+3. Usarlo en cualquier team YAML: `provider: mi_proveedor`.
 
 ---
 
 ## Decisiones de arquitectura
 
-Las decisiones de diseño se documentan como ADRs en `guidelines/decisions/`.
-Las principales:
-
 | ADR | Decisión |
 |-----|----------|
-| [ADR-001](guidelines/decisions/ADR-001-llm-abstraction.md) | Adapter pattern para abstracción LLM — cambio de proveedor sin tocar agentes |
-| [ADR-002](guidelines/decisions/ADR-002-docker-per-agent.md) | Un container Docker por rol — aislamiento, escalabilidad independiente |
+| [ADR-001](guidelines/decisions/ADR-001-llm-abstraction.md) | Adapter pattern para LLM — cambio de proveedor sin modificar agentes |
+| [ADR-002](guidelines/decisions/ADR-002-docker-per-agent.md) | Un container por agente — aislamiento e independencia |
+| [ADR-003](guidelines/decisions/ADR-003-profile-separation.md) | Profile como archivo .md externo — conocimiento especializado sin cambio de código |
+| [ADR-004](guidelines/decisions/ADR-004-workflow-driven-requeue.md) | Ciclo QA/fix config-driven — WorkflowEngine no conoce roles de dominio |
+| [ADR-005](guidelines/decisions/ADR-005-context-builder.md) | ContextBuilder como componente explícito — cada agente recibe solo lo que necesita |
 
 ---
 
@@ -666,11 +647,26 @@ Las principales:
 
 | Capa | Tecnología |
 |------|-----------|
-| Agentes + Orquestador | Python 3.12 |
+| Lenguaje | Python 3.12 |
 | API | FastAPI + Uvicorn |
-| LLM Providers | Anthropic SDK, OpenAI SDK, httpx (Ollama), Google Generative AI |
-| Comunicación entre containers | Redis Pub/Sub |
-| Knowledge Base | PostgreSQL (persistencia) + Redis (cache) |
-| Configuración | YAML |
-| Contenedores | Docker + Docker Compose |
-| Diagramas | Mermaid (renderiza en GitHub/GitLab) |
+| LLM | Anthropic SDK · OpenAI SDK · httpx (Ollama) · Google GenAI |
+| State + Artifacts | Redis (asyncio) |
+| Config | YAML |
+| Profiles | Markdown (archivos .md) |
+| Containers | Docker + Docker Compose |
+| Diagramas | Mermaid |
+
+---
+
+## Fase 2 (fuera de scope del MVP)
+
+| Feature | Descripción |
+|---------|-------------|
+| `Skills` | Capacidades específicas por agente (code_review, test_generation) |
+| `Tools` | Function calling: GitHub API, linter, compilador, buscador de docs |
+| GitHub Webhook | Trigger automático desde Issues/PRs |
+| GitHub PR creation | Cierre automático del ciclo con PR |
+| ProfileCurator Agent | LLM que analiza sugerencias y propone mejoras estructuradas al profile |
+| Vector KB | Búsqueda semántica en artefactos históricos |
+| Observabilidad | Trazas por tarea, métricas de tokens, latencia por agente |
+| Agent containers isolados | Comunicación via Redis Pub/Sub (actualmente in-process) |

@@ -1,10 +1,10 @@
 # ============================================================
-# Team: default_team
-# Generic software development team (cloud APIs)
+# Team: dotnet-react-migration
+# Migración de .NET MVC 5 hacia .NET 8 + React
 # ============================================================
 team:
-  name: default_team
-  description: Generic team with Anthropic models
+  name: dotnet-react-migration
+  description: Migration team for .NET MVC 5 to .NET 8 + React
 
 agents:
   - role: analyst
@@ -24,7 +24,7 @@ agents:
       max_tokens: 8192
 
   - role: backend_developer
-    profile: software_analysis     # override with a specific tech profile
+    profile: dotnet8
     llm:
       provider: anthropic
       model: claude-sonnet-4-6
@@ -32,7 +32,7 @@ agents:
       max_tokens: 8192
 
   - role: frontend_developer
-    profile: software_analysis     # override with a specific tech profile
+    profile: react
     llm:
       provider: anthropic
       model: claude-sonnet-4-6

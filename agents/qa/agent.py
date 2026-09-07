@@ -1,54 +1,79 @@
-"""QA Agent — validates implementation against requirements, emits pass/fail verdict."""
+"""QA Agent — role instructions + output parser + profile feedback trigger."""
+from __future__ import annotations
 import re
 from typing import Any
-from agents.base.agent import BaseAgent, LLMResponse, TaskContext
+from agents.base.agent import BaseAgent
+from orchestrator.llm.base import LLMResponse
+
+SECTIONS = [
+    "Test Plan",
+    "Test Cases",
+    "Issues Found",
+    "Coverage Assessment",
+    "Profile Improvement Suggestions",
+    "Verdict",
+]
 
 
 class QAAgent(BaseAgent):
-    role = "qa"
-    system_prompt = """You are a Senior QA Engineer and Test Architect.
+    ROLE_INSTRUCTIONS = """You are a Senior QA Engineer and Test Architect.
 
-Your job is to validate that the implementation meets the original requirements.
+Review ALL provided artifacts (user stories, architecture, backend code, frontend code)
+and produce a structured validation report:
 
-Review all provided artifacts (user stories, architecture, backend code, frontend code)
-and produce:
-1. Test plan (scope, test types, coverage targets)
-2. Test cases (ID, description, steps, expected result)
-3. Issues found (severity: critical/high/medium/low, description, affected component)
-4. Coverage assessment (what is and isn't covered)
-5. Final verdict: PASS or FAIL with justification
-
-A PASS verdict means: all critical/high issues are resolved and acceptance criteria are met.
-A FAIL verdict means: at least one critical or high severity issue remains.
-
-Output format (use these exact headers):
 ## Test Plan
 ## Test Cases
 ## Issues Found
 ## Coverage Assessment
+## Profile Improvement Suggestions
 ## Verdict
+
+Issue format:
+  - [CRITICAL|HIGH|MEDIUM|LOW] <description> | agent: <responsible_agent> | profile: <profile_name>
+
+Profile Improvement Suggestions format:
+  - profile: <profile_name> | section: <section_title> | suggestion: <what to add or fix>
+
+Verdict rules:
+- PASS: no CRITICAL or HIGH issues remain
+- FAIL: at least one CRITICAL or HIGH issue exists
+
+Write exactly "VERDICT: PASS" or "VERDICT: FAIL" at the end of the Verdict section.
 """
 
-    def _parse_output(self, response: LLMResponse, context: TaskContext) -> dict[str, Any]:
-        content = response.content
-        artifacts: dict[str, Any] = {"qa_report_raw": content}
+    def _parse_output(self, response: LLMResponse) -> dict[str, Any]:
+        artifacts = self._extract_sections(response.content, SECTIONS)
+        artifacts["qa_output"] = response.content
 
-        sections = ["Test Plan", "Test Cases", "Issues Found",
-                    "Coverage Assessment", "Verdict"]
-        for section in sections:
-            pattern = rf"## {section}\n(.*?)(?=\n## |\Z)"
-            match = re.search(pattern, content, re.DOTALL)
-            if match:
-                key = section.lower().replace(" ", "_")
-                artifacts[f"qa_{key}"] = match.group(1).strip()
+        # ── Verdict ───────────────────────────────────────────────────────
+        verdict_text = artifacts.get("verdict", "").upper()
+        passed       = "VERDICT: PASS" in verdict_text
+        artifacts["qa_passed"]  = passed
+        artifacts["qa_verdict"] = "pass" if passed else "fail"
 
-        # Determine pass/fail from verdict section
-        verdict_text = artifacts.get("qa_verdict", "").upper()
-        artifacts["qa_status"] = "pass" if "PASS" in verdict_text else "fail"
+        # ── Structured issues ─────────────────────────────────────────────
+        issues_text = artifacts.get("issues_found", "")
+        issue_pattern = r"-\s+\[(CRITICAL|HIGH|MEDIUM|LOW)\]\s+(.+?)\s+\|\s+agent:\s+(\S+)\s+\|\s+profile:\s+(\S+)"
+        issues = []
+        for m in re.finditer(issue_pattern, issues_text, re.IGNORECASE):
+            issues.append({
+                "severity":           m.group(1).upper(),
+                "description":        m.group(2).strip(),
+                "responsible_agent":  m.group(3).strip(),
+                "responsible_profile": m.group(4).strip(),
+            })
+        artifacts["qa_issues"] = issues
 
-        # Extract issues list
-        issues_text = artifacts.get("qa_issues_found", "")
-        critical_pattern = r"(?i)(critical|high)[^\n]*\n([^\n]+)"
-        artifacts["qa_critical_issues"] = re.findall(critical_pattern, issues_text)
+        # ── Profile improvement suggestions ───────────────────────────────
+        suggestions_text = artifacts.get("profile_improvement_suggestions", "")
+        sugg_pattern = r"-\s+profile:\s+(\S+)\s+\|\s+section:\s+(.+?)\s+\|\s+suggestion:\s+(.+)"
+        suggestions  = []
+        for m in re.finditer(sugg_pattern, suggestions_text, re.IGNORECASE):
+            suggestions.append({
+                "profile":    m.group(1).strip(),
+                "section":    m.group(2).strip(),
+                "suggestion": m.group(3).strip(),
+            })
+        artifacts["qa_profile_suggestions"] = suggestions
 
         return artifacts

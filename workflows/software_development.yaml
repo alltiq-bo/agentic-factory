@@ -1,0 +1,70 @@
+# ============================================================
+# Workflow: software_development
+# Reusable by any team — no role names hardcoded in the engine.
+# ============================================================
+name: software_development
+
+steps:
+  - name: analyze_requirements
+    agent_role: analyst
+    mode: sequential
+    depends_on: []
+    retry_max: 2
+    context_keys: []   # only receives task input + project knowledge
+
+  - name: design_architecture
+    agent_role: architect
+    mode: sequential
+    depends_on: [analyze_requirements]
+    retry_max: 2
+    context_keys:
+      - analyst_output
+      - user_stories
+      - functional_requirements
+      - acceptance_criteria
+
+  - name: implement_backend
+    agent_role: backend_developer
+    mode: parallel
+    depends_on: [design_architecture]
+    retry_max: 2
+    context_keys:
+      - user_stories
+      - acceptance_criteria
+      - system_architecture
+      - technology_stack
+      - api_contracts
+      - data_model
+      - adrs
+      - qa_issues           # populated on fix cycles
+      - qa_output
+
+  - name: implement_frontend
+    agent_role: frontend_developer
+    mode: parallel
+    depends_on: [design_architecture]
+    retry_max: 2
+    context_keys:
+      - user_stories
+      - acceptance_criteria
+      - system_architecture
+      - api_contracts
+      - component_tree
+      - qa_issues           # populated on fix cycles
+      - qa_output
+
+  - name: validate
+    agent_role: qa
+    mode: sequential
+    depends_on: [implement_backend, implement_frontend]
+    retry_max: 1
+    context_keys:
+      - user_stories
+      - acceptance_criteria
+      - api_contracts
+      - backend_output
+      - frontend_output
+      - qa_output           # previous QA cycle output (for fix cycle validation)
+    on_fail:
+      requeue: [implement_backend, implement_frontend]
+      max_cycles: 3
