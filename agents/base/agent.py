@@ -31,14 +31,19 @@ class BaseAgent:
     async def run(self, messages: list[Message]) -> AgentResult:
         """Execute with pre-built messages. Returns structured AgentResult."""
         attempt = 0
+        name    = self.__class__.__name__
         while attempt <= self.max_retries:
             try:
-                logger.info(
-                    "Agent [%s] calling %s (attempt %d)",
-                    self.__class__.__name__, self.llm.name, attempt + 1,
-                )
+                logger.info("┌─ [%s] iniciando — modelo: %s", name, self.llm.name)
                 response  = await self.llm.complete(messages)
                 artifacts = self._parse_output(response)
+
+                preview = response.content[:120].replace("\n", " ")
+                logger.info("└─ [%s] completado — tokens: %s entrada / %s salida | preview: %s...",
+                            name,
+                            response.input_tokens or "?",
+                            response.output_tokens or "?",
+                            preview)
 
                 return AgentResult(
                     agent_role  = self._role_name(),
@@ -52,8 +57,8 @@ class BaseAgent:
                 )
             except Exception as exc:
                 attempt += 1
-                logger.warning("Agent [%s] attempt %d failed: %s",
-                               self.__class__.__name__, attempt, exc)
+                logger.warning("✗ [%s] intento %d/%d fallido: %s",
+                               name, attempt, self.max_retries + 1, exc)
                 if attempt > self.max_retries:
                     return AgentResult(
                         agent_role = self._role_name(),
@@ -61,7 +66,9 @@ class BaseAgent:
                         output     = "",
                         error      = str(exc),
                     )
-                await asyncio.sleep(2 ** attempt)
+                wait = 2 ** attempt
+                logger.info("  reintentando en %ds...", wait)
+                await asyncio.sleep(wait)
 
     async def stream(self, messages: list[Message]) -> AsyncIterator[str]:
         async for chunk in self.llm.stream(messages):

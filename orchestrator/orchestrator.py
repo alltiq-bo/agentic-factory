@@ -189,6 +189,7 @@ class Orchestrator:
             "qa":                 TaskStatus.VALIDATING,
         }
         status = status_map.get(step.agent_role, TaskStatus.DEVELOPING)
+        logger.info("▶ Step [%s] — agente: %s", step.name, step.agent_role)
         import asyncio
         asyncio.create_task(
             self.sm.transition(context.task_id, status, current_step=step.name)
@@ -197,12 +198,12 @@ class Orchestrator:
     def _on_step_complete(
         self, step: WorkflowStep, result: AgentResult, context: TaskContext
     ) -> None:
-        logger.info("Step [%s] complete — role=%s", step.name, step.agent_role)
+        logger.info("✔ Step [%s] OK — role=%s", step.name, step.agent_role)
 
     def _on_step_fail(
         self, step: WorkflowStep, result: AgentResult, context: TaskContext
     ) -> None:
-        logger.error("Step [%s] failed — %s", step.name, result.error)
+        logger.error("✘ Step [%s] FAILED — %s", step.name, result.error)
 
     # ── GitHub comment ────────────────────────────────────────────────────
 
