@@ -208,16 +208,18 @@ async def submit_task_sync(request: TaskRequest):
     )
 
     return {
-        "task_id":   run.task_id,
-        "status":    run.status,
-        "team":      team,
-        "qa_cycle":  run.qa_cycle,
-        "error":     run.error,
-        "steps_run": list(run.results.keys()),
-        "results":   {
+        "task_id":     run.task_id,
+        "status":      run.status,
+        "team":        team,
+        "qa_cycle":    run.qa_cycle,
+        "error":       run.error,
+        "steps_run":   list(run.results.keys()),
+        "token_usage": run.token_usage,
+        "results":     {
             step: {
-                "role":   r.agent_role,
-                "output": r.output,
+                "role":        r.agent_role,
+                "output":      r.output,
+                "token_usage": r.token_usage,
             }
             for step, r in run.results.items()
         },

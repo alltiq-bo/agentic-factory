@@ -45,7 +45,7 @@ def build(
     """
     profile_content = load_profile(agent_def.profile)
     artifacts_block = _select_artifacts(step, context)
-    project_block   = _format_project_knowledge(context.project_knowledge)
+    project_block   = _format_project_knowledge(context.project_knowledge, step.knowledge_sections)
     cycle_note      = f"\n\n> **QA Fix Cycle {qa_cycle}** — review QA feedback before proceeding." if qa_cycle > 0 else ""
 
     system = f"""{role_instructions}
@@ -101,8 +101,26 @@ def _select_artifacts(step: WorkflowStep, context: TaskContext) -> str:
     return "\n\n".join(lines)
 
 
-def _format_project_knowledge(knowledge: dict[str, Any]) -> str:
+def _format_project_knowledge(
+    knowledge: dict[str, Any],
+    sections: list[str] | None = None,
+) -> str:
+    """
+    Format project knowledge for injection into the agent context.
+
+    sections: list of section prefixes to include (e.g. ["decisions", "standards"]).
+              None → include all. [] → include nothing.
+    """
     if not knowledge:
         return "_No project knowledge loaded._"
+
+    if sections is not None:
+        if not sections:
+            return "_No project knowledge selected for this step._"
+        knowledge = {k: v for k, v in knowledge.items()
+                     if any(k.startswith(s) for s in sections)}
+        if not knowledge:
+            return "_No matching project knowledge for selected sections._"
+
     lines = [f"### {k}\n{v}" for k, v in knowledge.items()]
     return "\n\n".join(lines)

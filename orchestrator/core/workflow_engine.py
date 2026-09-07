@@ -82,6 +82,7 @@ class WorkflowEngine:
                 for step, result in zip(parallel, results):
                     run.results[step.name] = result
                     self._store_artifacts(step, result, context)
+                    self._accumulate_tokens(step, result, run)
                     if result.status == AgentRunStatus.DONE:
                         completed.add(step.name)
                     else:
@@ -96,6 +97,7 @@ class WorkflowEngine:
                 result = await self._run_step(step, context, run.qa_cycle)
                 run.results[step.name] = result
                 self._store_artifacts(step, result, context)
+                self._accumulate_tokens(step, result, run)
 
                 if result.status == AgentRunStatus.DONE:
                     completed.add(step.name)
@@ -187,6 +189,23 @@ class WorkflowEngine:
             context.task_artifacts[key] = value
         # Always store the raw output under a predictable key
         context.task_artifacts[f"{step.agent_role}_output"] = result.output
+
+    def _accumulate_tokens(
+        self,
+        step: WorkflowStep,
+        result: AgentResult,
+        run: WorkflowRun,
+    ) -> None:
+        """Accumulate token usage per step and in running total."""
+        usage = result.token_usage or {}
+        inp = usage.get("input") or 0
+        out = usage.get("output") or 0
+        run.token_usage[step.name] = {"input": inp, "output": out}
+        total = run.token_usage.get("total", {"input": 0, "output": 0})
+        run.token_usage["total"] = {
+            "input":  total["input"]  + inp,
+            "output": total["output"] + out,
+        }
 
     def _step_signals_failure(
         self,

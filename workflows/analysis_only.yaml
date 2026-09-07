@@ -10,6 +10,7 @@ steps:
     mode: sequential
     depends_on: []
     context_keys: []
+    knowledge_sections: [decisions, agents]
     retry_max: 2
 
   - name: design_solution
@@ -17,4 +18,5 @@ steps:
     mode: sequential
     depends_on: [analyze_requirements]
     context_keys: [analyst_output, user_stories, functional_requirements, acceptance_criteria]
+    knowledge_sections: [decisions, standards, agents]
     retry_max: 2

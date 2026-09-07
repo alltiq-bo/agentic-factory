@@ -87,6 +87,9 @@ class WorkflowStep:
     retry_max:   int = 2
     # Keys from task artifacts this step's agent should receive
     context_keys: list[str] = field(default_factory=list)
+    # Prefixes of project_knowledge sections to include (None = all, [] = none)
+    # e.g. ["decisions", "standards"] matches keys like "decisions/ADR-001-..."
+    knowledge_sections: Optional[list[str]] = None
 
 
 @dataclass
@@ -154,3 +157,10 @@ class WorkflowRun:
     status:        str = "running"
     qa_cycle:      int = 0
     error:         Optional[str] = None
+    token_usage:   dict[str, Any] = field(default_factory=dict)
+    # token_usage shape:
+    # {
+    #   "step_name": {"input": N, "output": N},
+    #   ...
+    #   "total":     {"input": N, "output": N},
+    # }

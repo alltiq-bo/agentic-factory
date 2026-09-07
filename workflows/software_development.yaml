@@ -10,7 +10,8 @@ steps:
     mode: sequential
     depends_on: []
     retry_max: 2
-    context_keys: []   # only receives task input + project knowledge
+    context_keys: []
+    knowledge_sections: [decisions, agents]   # ADRs + analyst guidelines
 
   - name: design_architecture
     agent_role: architect
@@ -18,10 +19,8 @@ steps:
     depends_on: [analyze_requirements]
     retry_max: 2
     context_keys:
-      - analyst_output
-      - user_stories
-      - functional_requirements
-      - acceptance_criteria
+      - analyst_output   # contains user_stories, functional_requirements, acceptance_criteria — no duplicates
+    knowledge_sections: [decisions, standards, agents]   # ADRs + standards + architect guidelines
 
   - name: implement_backend
     agent_role: backend_developer
@@ -38,6 +37,7 @@ steps:
       - adrs
       - qa_issues           # populated on fix cycles
       - qa_output
+    knowledge_sections: [standards]   # coding standards only
 
   - name: implement_frontend
     agent_role: frontend_developer
@@ -52,6 +52,7 @@ steps:
       - component_tree
       - qa_issues           # populated on fix cycles
       - qa_output
+    knowledge_sections: [standards]   # coding standards only
 
   - name: validate
     agent_role: qa
@@ -65,6 +66,7 @@ steps:
       - backend_output
       - frontend_output
       - qa_output           # previous QA cycle output (for fix cycle validation)
+    knowledge_sections: [standards, agents]   # QA standards + qa guidelines
     on_fail:
       requeue: [implement_backend, implement_frontend]
       max_cycles: 3
