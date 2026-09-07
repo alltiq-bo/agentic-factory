@@ -35,10 +35,11 @@ def available_providers() -> list[str]:
 
 # Auto-import adapters so decorators run and register providers
 def _load_adapters():
-    from . import anthropic_adapter  # noqa: F401
-    from . import openai_adapter     # noqa: F401
-    from . import ollama_adapter     # noqa: F401
-    from . import gemini_adapter     # noqa: F401
+    from . import anthropic_adapter    # noqa: F401
+    from . import claude_code_adapter  # noqa: F401
+    from . import openai_adapter       # noqa: F401
+    from . import ollama_adapter       # noqa: F401
+    from . import gemini_adapter       # noqa: F401
 
 
 _load_adapters()

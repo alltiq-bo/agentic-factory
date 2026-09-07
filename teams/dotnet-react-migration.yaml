@@ -10,41 +10,36 @@ agents:
   - role: analyst
     profile: software_analysis
     llm:
-      provider: anthropic
-      model: claude-sonnet-4-6
-      temperature: 0.4
+      provider: claude_code
+      model: sonnet
       max_tokens: 4096
 
   - role: architect
     profile: software_architecture
     llm:
-      provider: anthropic
-      model: claude-sonnet-4-6
-      temperature: 0.3
+      provider: claude_code
+      model: sonnet
       max_tokens: 8192
 
   - role: backend_developer
-    profile: api_agricola          # profile específico del proyecto
+    profile: api_agricola
     llm:
-      provider: anthropic
-      model: claude-sonnet-4-6
-      temperature: 0.2
+      provider: claude_code
+      model: sonnet
       max_tokens: 8192
 
   - role: frontend_developer
     profile: web_agro_nt
     llm:
-      provider: anthropic
-      model: claude-sonnet-4-6
-      temperature: 0.2
+      provider: claude_code
+      model: sonnet
       max_tokens: 8192
 
   - role: qa
     profile: software_qa
     llm:
-      provider: anthropic
-      model: claude-sonnet-4-6
-      temperature: 0.3
+      provider: claude_code
+      model: sonnet
       max_tokens: 4096
 
 workflow: software_development

@@ -46,6 +46,8 @@ services:
       - ./guidelines:/app/guidelines
       - ./teams:/app/teams
       - ./workflows:/app/workflows
+      # Sesión de Claude Code del host — evita re-autenticación
+      - ~/.claude:/root/.claude:ro
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 10s
