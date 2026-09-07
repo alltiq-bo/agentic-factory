@@ -312,6 +312,53 @@ Orden de registro:
 
 ---
 
+## Flujo de desarrollo
+
+Cuando recibas una tarea de implementación, seguir este proceso en orden:
+
+### 1. Analizar el requerimiento
+Antes de escribir código, identificar:
+- **Entidades de dominio** involucradas (¿son existentes o nuevas?)
+- **Operaciones**: qué endpoints expone (GET/POST/PUT) y qué hace cada uno
+- **DTOs necesarios**: filtros de entrada, resultados de salida, DTOs de creación/modificación
+- **Queries**: ¿es un query simple con EF Specification o requiere ADO.NET directo (UNION, query complejo)?
+- **Archivos a crear o modificar**: listar explícitamente antes de empezar
+
+### 2. Orden de implementación (siempre de adentro hacia afuera)
+```
+1. Domain/Entities/          → entidad si es nueva
+2. Domain/DTOs/              → DTOs de respuesta y filtros de dominio
+3. Domain/Interfaces/        → IXRepository con la firma de métodos
+4. Application/DTOs/         → DTOs de aplicación (lo que el controller recibe/envía)
+5. Application/Interfaces/   → IXService con la firma de métodos
+6. Application/Services/     → XService : BaseService, IXService
+7. Infrastructure/Persistence/Repositories/ → XRepository : BaseRepository<T>, IXRepository
+8. ApiAgricola/Controllers/  → XController : BaseAuthApiController
+9. ApiAgricola/Program.cs    → registrar IXRepository + IXService como AddScoped
+```
+Nunca saltar pasos ni implementar en orden inverso — las dependencias van de adentro hacia afuera.
+
+### 3. Formato de entrega
+Para cada archivo, entregar:
+- **Ruta completa** desde la raíz del proyecto (ej. `Application/Services/PlanillaService.cs`)
+- **Código completo** del archivo — no fragmentos ni pseudocódigo
+- Si es una **modificación** a un archivo existente, indicar qué sección se agrega/cambia
+
+### 4. Manejo de ambigüedad
+- Si un requerimiento no especifica algo (ej. ¿requiere paginación? ¿qué campos filtrar?), **asumir el comportamiento más conservador** y documentar la suposición al inicio del entregable
+- Si hay un patrón análogo en el proyecto (ej. EgresosController para un nuevo módulo similar), seguirlo exactamente
+- **No inventar patrones** que no estén en este perfil — usar siempre el más cercano y señalarlo
+
+### 5. Lo que NO hacer
+- No usar `ILogger<T>` — siempre `log4net`
+- No agregar EF Migrations — el schema es DB-first vía scripts SQL en `Infrastructure/Scripts/`
+- No retornar `Ok(data)` directamente — siempre `ResponseApp.From(result)`
+- No lanzar excepciones desde servicios al controller — siempre retornar `ResponseMessageDto`
+- No leer `IConfiguration` directamente en servicios — usar `ConfigApp`
+- No referenciar `Infrastructure` desde `Application`
+
+---
+
 ## Checklist para nuevos endpoints
 
 - [ ] Controller hereda de `BaseApiController` o `BaseAuthApiController` según requiera auth

@@ -390,6 +390,51 @@ Siempre leer `body.data`, validar `body.error`, usar `body.message` para mensaje
 
 ---
 
+## Flujo de desarrollo
+
+Cuando recibas una tarea de implementación, seguir este proceso en orden:
+
+### 1. Analizar el requerimiento
+Antes de escribir código, identificar:
+- **Tipos necesarios**: qué interfaces/types agregar a `shared/types/index.ts`
+- **Endpoints del backend**: qué URLs consume el módulo (filtros, búsqueda, CRUD)
+- **Componentes a crear**: página principal + filtros + resultado (como mínimo)
+- **¿Requiere registro en App.tsx?**: si es un módulo nuevo con ruta propia, sí
+- **Archivos a crear o modificar**: listar explícitamente antes de empezar
+
+### 2. Orden de implementación (siempre de adentro hacia afuera)
+```
+1. src/shared/types/index.ts           → interfaces XFilters, XResult, XCreateDto, CatalogoFiltroX
+2. src/infrastructure/services/        → XService.ts con clase + singleton exportado
+3. src/presentation/components/x/      → XFiltros.tsx + XResultado.tsx
+4. src/presentation/pages/             → XPage.tsx (página principal)
+5. src/App.tsx                         → registrar en formComponents si es módulo nuevo
+```
+Nunca crear la página antes de tener los tipos y el servicio — la página los importa.
+
+### 3. Formato de entrega
+Para cada archivo, entregar:
+- **Ruta completa** desde `src/` (ej. `src/presentation/pages/PlanillaPage.tsx`)
+- **Código completo** del archivo — no fragmentos ni pseudocódigo
+- Si es una **modificación** (ej. agregar tipos a `shared/types/index.ts`), indicar qué se agrega
+
+### 4. Manejo de ambigüedad
+- Si el requerimiento no especifica los campos del formulario, tomar como referencia el módulo más análogo (Egresos para módulos de transacciones, Movimientos para módulos de consulta)
+- Si un campo del backend no tiene un control claro en el form, usar `Autocomplete` para listas o `TextField` para texto/número
+- **No inventar librerías** fuera del stack declarado — solo MUI v7, lucide-react, date-fns, xlsx-js-style
+- Documentar suposiciones al inicio del entregable
+
+### 5. Lo que NO hacer
+- No usar `fetch` directamente — siempre `apiFetch`
+- No declarar tipos fuera de `src/shared/types/index.ts`
+- No usar `export default` en componentes — siempre named export
+- No agregar `@mui/icons-material` — usar `lucide-react`
+- No omitir `size="small"` en controles MUI
+- No cachear el token en el servicio — leer con `tokenStorage.get()` en cada request
+- No dejar `useEffect` con `doSearch` en deps si `doSearch` puede ser inestable — declarar `doSearch` con `useCallback` antes del `useEffect`
+
+---
+
 ## Checklist para nuevos módulos
 
 - [ ] Tipos definidos en `src/shared/types/index.ts`
