@@ -392,7 +392,8 @@ agentic_factory/
 │   │   ├── anthropic_adapter.py
 │   │   ├── openai_adapter.py
 │   │   ├── ollama_adapter.py
-│   │   └── gemini_adapter.py
+│   │   ├── gemini_adapter.py
+│   └── claude_code_adapter.py      # CLI claude -p — sin API key, sesión OAuth local
 │   ├── core/
 │   │   ├── models.py               # Domain models: Agent, Team, Workflow, Task...
 │   │   ├── context_builder.py      # Construye messages para cada agente
@@ -424,7 +425,8 @@ agentic_factory/
 │   └── store.py                    # load_project_knowledge() + write/read_artifacts()
 │
 ├── workflows/
-│   └── software_development.yaml   # Workflow reutilizable entre equipos
+│   ├── software_development.yaml   # Flujo completo: analyst→architect→backend+frontend→qa
+│   └── analysis_only.yaml          # Solo analyst + architect (análisis y diseño)
 │
 ├── teams/
 │   ├── dotnet-react-migration.yaml # Caso inicial: .NET MVC 5 → .NET 8 + React
@@ -528,20 +530,40 @@ No se modifica ningún archivo de código.
 
 ```bash
 cp .env.example .env
-# Editar .env con tu API key
+# Editar con tus valores
 ```
 
-### 2. Levantar el stack
+Ejemplo con `claude_code` (sin API key de Anthropic):
+
+```env
+GH_TOKEN=ghp_xxxxxxxxxxxx          # Personal Access Token con scopes: repo, project
+TEAM_CONFIG=dotnet-react-migration
+LOG_LEVEL=INFO
+CLAUDE_BIN=/root/.npm-global/bin/claude
+CLAUDE_CONFIG_DIR=~/.claude-personal
+CLAUDE_ADD_DIRS=/home/apps/web/react/web.agro.nt   # directorios accesibles por agentes
+CLAUDE_TIMEOUT=600
+```
+
+### 2. Levantar Redis y el orquestador
 
 ```bash
-# Con APIs cloud (Anthropic por defecto)
-docker compose up
+# Redis en Docker
+docker compose up redis -d
 
-# Con Ollama local (requiere GPU)
-docker compose --profile local_llm up
+# Orquestador en host (requerido con claude_code — OAuth no funciona dentro de Docker)
+source .env && export $(grep -v '^#' .env | xargs)
+nohup python3 -m uvicorn orchestrator.api.main:app --host 0.0.0.0 --port 8000 \
+  > /tmp/orchestrator.log 2>&1 &
+
+# Ver logs en tiempo real
+tail -f /tmp/orchestrator.log
 ```
 
-### 3. Enviar una tarea (async)
+> **Nota:** Con proveedores cloud (Anthropic/OpenAI) el stack completo puede correr en Docker.
+> Con `claude_code` el orquestador debe correr en el host porque el token OAuth está ligado a la sesión local.
+
+### 3. Enviar una tarea desde texto libre (async)
 
 ```bash
 curl -X POST http://localhost:8000/tasks \
@@ -553,20 +575,38 @@ curl -X POST http://localhost:8000/tasks \
 # → { "task_id": "...", "status": "created" }
 ```
 
-### 4. Consultar estado
-
-```bash
-curl http://localhost:8000/tasks/{task_id}
-# → { "status": "validating", "current_step": "validate", "qa_cycle": 1 }
-```
-
-### 5. Ejecutar de forma síncrona (dev/testing)
+### 4. Enviar desde un GitHub Issue
 
 ```bash
 curl -X POST http://localhost:8000/tasks/sync \
   -H "Content-Type: application/json" \
-  -d '{ "input": "Build user auth with JWT for the migration project" }'
-# → Espera a que termine y retorna el resultado completo
+  -d '{
+    "github_issue": { "repo": "owner/repo", "number": 12 },
+    "workflow": "analysis_only",
+    "project_id": "my-project"
+  }'
+```
+
+Campos opcionales de la request:
+
+| Campo | Descripción |
+|-------|-------------|
+| `input` | Texto libre de la tarea |
+| `github_issue` | `{ "repo": "owner/repo", "number": N }` — fetcha el issue automáticamente |
+| `workflow` | Override del workflow (ej. `analysis_only`, `software_development`) |
+| `team` | Override del equipo (ej. `dotnet-react-migration`) |
+| `project_id` | Identificador del proyecto |
+| `task_id` | ID custom (se genera UUID si se omite) |
+
+Al completar, el orquestador:
+- Postea un comentario corto en el issue (`✅ Completado por agentes (analyst, architect).`)
+- Mueve la tarjeta a **Done** en el GitHub Project asociado (requiere scope `project` en el token)
+
+### 5. Consultar estado
+
+```bash
+curl http://localhost:8000/tasks/{task_id}
+# → { "status": "validating", "current_step": "validate", "qa_cycle": 1 }
 ```
 
 ---
@@ -628,6 +668,29 @@ class MiProveedorLLM(LLMProvider):
 2. Importarlo en `factory.py` → `_load_adapters()`.
 
 3. Usarlo en cualquier team YAML: `provider: mi_proveedor`.
+
+### Proveedor `claude_code` (sin API key)
+
+Usa el CLI `claude -p` con la sesión activa de Claude Code. No requiere `ANTHROPIC_API_KEY`.
+
+```yaml
+# teams/dotnet-react-migration.yaml
+agents:
+  - role: analyst
+    profile: software_analysis
+    llm:
+      provider: claude_code
+      model: sonnet        # alias: sonnet | opus | haiku
+```
+
+Variables de entorno:
+
+| Variable | Default | Descripción |
+|----------|---------|-------------|
+| `CLAUDE_BIN` | `claude` | Path al binario (ej. `/root/.npm-global/bin/claude`) |
+| `CLAUDE_CONFIG_DIR` | — | Sesión a usar (ej. `~/.claude-personal`, `~/.claude-work`) |
+| `CLAUDE_ADD_DIRS` | — | Directorios extra accesibles por el subprocess, separados por `:` |
+| `CLAUDE_TIMEOUT` | `600` | Timeout en segundos para cada llamada al CLI |
 
 ---
 

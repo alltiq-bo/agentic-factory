@@ -48,6 +48,11 @@ class ClaudeCodeProvider(LLMProvider):
         super().__init__(config)
         self._bin        = os.environ.get("CLAUDE_BIN", "claude")
         self._config_dir = os.environ.get("CLAUDE_CONFIG_DIR")  # ej. ~/.claude-personal
+        # Directorios extra que el subprocess puede leer/escribir (separados por :)
+        self._add_dirs   = [
+            d.strip() for d in os.environ.get("CLAUDE_ADD_DIRS", "").split(":")
+            if d.strip()
+        ]
         if not shutil.which(self._bin):
             raise RuntimeError(
                 f"claude CLI '{self._bin}' no encontrado en PATH. "
@@ -62,6 +67,8 @@ class ClaudeCodeProvider(LLMProvider):
         ]
         if self.config.model:
             cmd += ["--model", self.config.model]
+        for d in self._add_dirs:
+            cmd += ["--add-dir", os.path.expanduser(d)]
         return cmd
 
     async def complete(self, messages: list[Message]) -> LLMResponse:
@@ -81,7 +88,7 @@ class ClaudeCodeProvider(LLMProvider):
             env    = env,
         )
 
-        timeout = max(self.config.timeout, 300)  # mínimo 5 min para tareas largas
+        timeout = max(self.config.timeout, int(os.environ.get("CLAUDE_TIMEOUT", 600)))
         try:
             stdout, stderr = await asyncio.wait_for(
                 proc.communicate(input=prompt.encode()),

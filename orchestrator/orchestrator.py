@@ -211,7 +211,7 @@ class Orchestrator:
     ) -> None:
         logger.error("✘ Step [%s] FAILED — %s", step.name, result.error)
 
-    # ── GitHub comment ────────────────────────────────────────────────────
+    # ── GitHub comment + project card move ───────────────────────────────
 
     async def _post_github_comment(self, github_issue: dict, run: WorkflowRun) -> None:
         repo   = github_issue.get("repo", "")
@@ -222,6 +222,11 @@ class Orchestrator:
             logger.warning("GitHub comment skipped — missing repo, number or GH_TOKEN")
             return
 
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/vnd.github+json",
+        }
+
         # Comentario corto — solo estado y pasos ejecutados
         pasos = ", ".join(run.results.keys()) or "ninguno"
         if run.status == "done":
@@ -229,21 +234,144 @@ class Orchestrator:
         else:
             body = f"❌ Fallido en `{run.error or 'error desconocido'}` — pasos ejecutados: {pasos}."
 
-        url = f"https://api.github.com/repos/{repo}/issues/{number}/comments"
-        headers = {
-            "Authorization": f"Bearer {token}",
-            "Accept": "application/vnd.github+json",
-        }
-
         try:
             async with httpx.AsyncClient(timeout=15) as client:
-                resp = await client.post(url, headers=headers, json={"body": body})
+                resp = await client.post(
+                    f"https://api.github.com/repos/{repo}/issues/{number}/comments",
+                    headers=headers,
+                    json={"body": body},
+                )
             if resp.status_code == 201:
                 logger.info("GitHub comment posted → %s#%s", repo, number)
             else:
                 logger.warning("GitHub comment failed: %s %s", resp.status_code, resp.text[:200])
         except Exception as e:
             logger.warning("GitHub comment error: %s", e)
+
+        # Mover tarjeta en GitHub Project si la tarea completó exitosamente
+        if run.status == "done":
+            await self._move_project_card(repo, number, token)
+
+    async def _move_project_card(self, repo: str, number: int, token: str) -> None:
+        """Mueve el issue al estado 'Done' en el GitHub Project asociado (Projects v2)."""
+        gql_url = "https://api.github.com/graphql"
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+        }
+        owner, repo_name = repo.split("/", 1)
+
+        # 1. Obtener node_id del issue y sus project items
+        query = """
+        query($owner: String!, $repo: String!, $number: Int!) {
+          repository(owner: $owner, name: $repo) {
+            issue(number: $number) {
+              id
+              projectItems(first: 10) {
+                nodes {
+                  id
+                  project {
+                    id
+                    title
+                    fields(first: 20) {
+                      nodes {
+                        ... on ProjectV2SingleSelectField {
+                          id
+                          name
+                          options { id name }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+        """
+        try:
+            async with httpx.AsyncClient(timeout=15) as client:
+                resp = await client.post(
+                    gql_url,
+                    headers=headers,
+                    json={"query": query, "variables": {"owner": owner, "repo": repo_name, "number": number}},
+                )
+            data = resp.json()
+        except Exception as e:
+            logger.warning("GitHub project query error: %s", e)
+            return
+
+        if "errors" in data:
+            logger.warning("GitHub GraphQL errors: %s", data["errors"])
+            return
+
+        issue_data = data.get("data", {}).get("repository", {}).get("issue", {})
+        project_items = issue_data.get("projectItems", {}).get("nodes", [])
+        if not project_items:
+            logger.info("Issue #%s no está en ningún GitHub Project — skip move", number)
+            return
+
+        # Iterar sobre los project items y mover cada uno a "Done"
+        for item in project_items:
+            item_id    = item["id"]
+            project    = item["project"]
+            project_id = project["id"]
+
+            # Buscar campo "Status" con opción "Done"
+            status_field = None
+            done_option_id = None
+            for field in project.get("fields", {}).get("nodes", []):
+                if field.get("name", "").lower() == "status":
+                    status_field = field
+                    for opt in field.get("options", []):
+                        if opt["name"].lower() in ("done", "hecho", "completado"):
+                            done_option_id = opt["id"]
+                            break
+                    break
+
+            if not status_field or not done_option_id:
+                logger.warning(
+                    "Project '%s': no se encontró campo Status con opción Done — opciones: %s",
+                    project["title"],
+                    [o["name"] for o in (status_field or {}).get("options", [])],
+                )
+                continue
+
+            # 2. Actualizar el item al estado Done
+            mutation = """
+            mutation($project: ID!, $item: ID!, $field: ID!, $option: String!) {
+              updateProjectV2ItemFieldValue(input: {
+                projectId: $project
+                itemId: $item
+                fieldId: $field
+                value: { singleSelectOptionId: $option }
+              }) {
+                projectV2Item { id }
+              }
+            }
+            """
+            try:
+                async with httpx.AsyncClient(timeout=15) as client:
+                    resp = await client.post(
+                        gql_url,
+                        headers=headers,
+                        json={
+                            "query": mutation,
+                            "variables": {
+                                "project": project_id,
+                                "item":    item_id,
+                                "field":   status_field["id"],
+                                "option":  done_option_id,
+                            },
+                        },
+                    )
+                result = resp.json()
+                if "errors" in result:
+                    logger.warning("Move card error: %s", result["errors"])
+                else:
+                    logger.info("✔ Tarjeta movida a Done — project: '%s'", project["title"])
+            except Exception as e:
+                logger.warning("Move card exception: %s", e)
 
     # ── Profile suggestion flush ───────────────────────────────────────────
 
