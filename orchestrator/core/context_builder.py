@@ -47,6 +47,7 @@ def build(
     artifacts_block = _select_artifacts(step, context)
     project_block   = _format_project_knowledge(context.project_knowledge, step.knowledge_sections)
     cycle_note      = f"\n\n> **QA Fix Cycle {qa_cycle}** — review QA feedback before proceeding." if qa_cycle > 0 else ""
+    task_block      = _format_task_input(step.include_input, context)
 
     system = f"""{role_instructions}
 
@@ -55,7 +56,7 @@ def build(
 """
 
     user = f"""## Task
-{context.input}{cycle_note}
+{task_block}{cycle_note}
 
 ## Project Knowledge
 {project_block}
@@ -99,6 +100,23 @@ def _select_artifacts(step: WorkflowStep, context: TaskContext) -> str:
         total += len(text)
 
     return "\n\n".join(lines)
+
+
+def _format_task_input(include_input: str, context: TaskContext) -> str:
+    """
+    Return the task input block based on the step's include_input policy.
+
+    "full"    → full original task input (default)
+    "summary" → compact summary if available, else falls back to full input
+    "none"    → omit task input entirely (artifact-only steps)
+    """
+    if include_input == "none":
+        return "_Task input omitted for this step._"
+    if include_input == "summary":
+        if context.summary:
+            return context.summary
+        return context.input   # fallback: no summary produced yet
+    return context.input       # "full" (default)
 
 
 def _format_project_knowledge(

@@ -10,6 +10,8 @@ steps:
     mode: sequential
     depends_on: []
     context_keys: []
+    include_input: full
+    summary_artifact: problem_statement
     knowledge_sections: [decisions, agents]
     retry_max: 2
 
@@ -17,6 +19,7 @@ steps:
     agent_role: architect
     mode: sequential
     depends_on: [analyze_requirements]
+    include_input: summary
     context_keys: [analyst_output, user_stories, functional_requirements, acceptance_criteria]
     knowledge_sections: [decisions, standards, agents]
     retry_max: 2

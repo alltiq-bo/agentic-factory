@@ -189,6 +189,9 @@ class WorkflowEngine:
             context.task_artifacts[key] = value
         # Always store the raw output under a predictable key
         context.task_artifacts[f"{step.agent_role}_output"] = result.output
+        # Promote summary_artifact to context.summary if configured
+        if step.summary_artifact and step.summary_artifact in context.task_artifacts:
+            context.summary = str(context.task_artifacts[step.summary_artifact])
 
     def _accumulate_tokens(
         self,

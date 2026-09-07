@@ -88,8 +88,12 @@ class WorkflowStep:
     # Keys from task artifacts this step's agent should receive
     context_keys: list[str] = field(default_factory=list)
     # Prefixes of project_knowledge sections to include (None = all, [] = none)
-    # e.g. ["decisions", "standards"] matches keys like "decisions/ADR-001-..."
     knowledge_sections: Optional[list[str]] = None
+    # How much of the original task input to include: "full" | "summary" | "none"
+    # "summary" uses context.summary if available, falls back to full input
+    include_input: str = "full"
+    # Artifact key whose value should be written to context.summary after this step
+    summary_artifact: Optional[str] = None
 
 
 @dataclass
@@ -129,11 +133,13 @@ class TaskContext:
 
     project_knowledge → permanent KB (profiles, ADRs, standards)
     task_artifacts    → produced by agents in this task execution
+    summary           → compact representation of task progress (updated per step)
     metadata          → engine internals, never sent to agents
     """
     task_id:          str
     project_id:       str
     input:            str
+    summary:          str = ""   # populated after first summarizing step
     project_knowledge: dict[str, Any] = field(default_factory=dict)
     task_artifacts:   dict[str, Any] = field(default_factory=dict)
     metadata:         dict[str, Any] = field(default_factory=dict)

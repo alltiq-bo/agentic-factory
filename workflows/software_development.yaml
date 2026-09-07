@@ -11,6 +11,8 @@ steps:
     depends_on: []
     retry_max: 2
     context_keys: []
+    include_input: full
+    summary_artifact: problem_statement   # compact summary promoted to context.summary
     knowledge_sections: [decisions, agents]   # ADRs + analyst guidelines
 
   - name: design_architecture
@@ -18,6 +20,7 @@ steps:
     mode: sequential
     depends_on: [analyze_requirements]
     retry_max: 2
+    include_input: summary                # compact problem statement (no full issue text)
     context_keys:
       - analyst_output   # contains user_stories, functional_requirements, acceptance_criteria — no duplicates
     knowledge_sections: [decisions, standards, agents]   # ADRs + standards + architect guidelines
@@ -27,6 +30,7 @@ steps:
     mode: parallel
     depends_on: [design_architecture]
     retry_max: 2
+    include_input: summary                # compact problem statement only
     context_keys:
       - user_stories
       - acceptance_criteria
@@ -44,6 +48,7 @@ steps:
     mode: parallel
     depends_on: [design_architecture]
     retry_max: 2
+    include_input: summary                # compact problem statement only
     context_keys:
       - user_stories
       - acceptance_criteria
@@ -59,6 +64,7 @@ steps:
     mode: sequential
     depends_on: [implement_backend, implement_frontend]
     retry_max: 1
+    include_input: none                   # QA only needs artifacts, not original issue text
     context_keys:
       - user_stories
       - acceptance_criteria

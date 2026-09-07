@@ -99,6 +99,8 @@ def _parse_workflow(raw: dict) -> WorkflowDefinition:
             retry_max=s.get("retry_max", 2),
             context_keys=s.get("context_keys", []),
             knowledge_sections=s.get("knowledge_sections", None),
+            include_input=s.get("include_input", "full"),
+            summary_artifact=s.get("summary_artifact", None),
         ))
     return WorkflowDefinition(name=raw["name"], steps=steps)
 
