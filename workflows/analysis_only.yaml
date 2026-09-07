@@ -16,5 +16,5 @@ steps:
     agent_role: architect
     mode: sequential
     depends_on: [analyze_requirements]
-    context_keys: [analysis]
+    context_keys: [analyst_output, user_stories, functional_requirements, acceptance_criteria]
     retry_max: 2
