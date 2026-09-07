@@ -109,11 +109,12 @@ async def fetch_github_issue(ref: GitHubIssueRef) -> str:
 # ── Request / Response models ─────────────────────────────────────────────
 
 class TaskRequest(BaseModel):
-    input:        str | None          = Field(default=None, description="Texto libre de la tarea")
+    input:        str | None            = Field(default=None, description="Texto libre de la tarea")
     github_issue: GitHubIssueRef | None = Field(default=None, description="Referencia a un issue de GitHub")
-    team:         str | None          = Field(default=None, description="Nombre del team (override de TEAM_CONFIG)")
-    project_id:   str                 = Field(default="default", description="Identificador del proyecto")
-    task_id:      str | None          = Field(default=None, description="ID de tarea (se genera si se omite)")
+    team:         str | None            = Field(default=None, description="Nombre del team (override de TEAM_CONFIG)")
+    workflow:     str | None            = Field(default=None, description="Workflow a usar (ej. analysis_only, software_development)")
+    project_id:   str                   = Field(default="default", description="Identificador del proyecto")
+    task_id:      str | None            = Field(default=None, description="ID de tarea (se genera si se omite)")
 
     def model_post_init(self, __context):
         if not self.input and not self.github_issue:
@@ -169,10 +170,11 @@ async def submit_task(request: TaskRequest):
 
     asyncio.create_task(
         orch.run_task(
-            input_text   = input_text,
-            project_id   = request.project_id,
-            task_id      = request.task_id,
-            github_issue = github_issue,
+            input_text        = input_text,
+            project_id        = request.project_id,
+            task_id           = request.task_id,
+            github_issue      = github_issue,
+            workflow_override = request.workflow,
         )
     )
 
@@ -198,10 +200,11 @@ async def submit_task_sync(request: TaskRequest):
     github_issue = request.github_issue.model_dump() if request.github_issue else None
 
     run = await orch.run_task(
-        input_text   = input_text,
-        project_id   = request.project_id,
-        task_id      = request.task_id,
-        github_issue = github_issue,
+        input_text        = input_text,
+        project_id        = request.project_id,
+        task_id           = request.task_id,
+        github_issue      = github_issue,
+        workflow_override = request.workflow,
     )
 
     return {

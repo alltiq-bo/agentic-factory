@@ -76,16 +76,22 @@ class Orchestrator:
         input_text: str,
         project_id: str = "default",
         task_id: Optional[str] = None,
-        github_issue: Optional[dict] = None,   # {"repo": "owner/repo", "number": N}
+        github_issue: Optional[dict] = None,
+        workflow_override: Optional[str] = None,  # nombre de workflow alternativo
     ) -> WorkflowRun:
-        task_id = task_id or str(uuid.uuid4())
+        task_id  = task_id or str(uuid.uuid4())
+        workflow = self._team.workflow
+        if workflow_override:
+            from orchestrator.core.config_loader import load_workflow
+            workflow = load_workflow(workflow_override)
+            logger.info("Workflow override: %s", workflow_override)
 
         # ── 1. Create task state ───────────────────────────────────────────
         state = await self.sm.create(TaskState(
             task_id       = task_id,
             project_id    = project_id,
             status        = TaskStatus.CREATED,
-            workflow_name = self._team.workflow.name,
+            workflow_name = workflow.name,
         ))
 
         # ── 2. Build TaskContext ───────────────────────────────────────────
@@ -107,7 +113,7 @@ class Orchestrator:
             on_step_fail      = self._on_step_fail,
         )
 
-        run = await engine.execute(self._team.workflow, context)
+        run = await engine.execute(workflow, context)
 
         # ── 4. Final state transition ──────────────────────────────────────
         final_status = {
